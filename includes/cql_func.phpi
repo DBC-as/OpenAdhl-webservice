@@ -1,0 +1,87 @@
+<?php
+
+/* 
+ * converts a sub-set of cql to ccl 
+ */
+
+function cql_to_ccl($cql) {
+global $cql_to_ccl_error;
+  $cql_to_ccl_error = $ret = "";
+
+  $ret["ccl"] = private_cql_to_ccl($cql);
+  if ($cql_to_ccl_error) $ret["error"] = $cql_to_ccl_error;
+  return ($ret);
+}
+
+/*  
+ *  private functions 
+ */
+
+function private_cql_to_ccl($cql) {
+  $ret = "";
+  switch ($cql["type"]) {
+    case "boolean":
+      $ret = "(" . private_cql_to_ccl($cql["left"]) . 
+                   cql_operator_to_ccl($cql["op"]) . " " . 
+                   private_cql_to_ccl($cql["right"]) . ") ";
+      break;
+    case "searchClause":
+      if (isset($cql["field"]))
+        $ret .= cql_field_to_ccl($cql["field"]) . 
+                cql_relation_to_ccl($cql["relation"]);
+      $ret .= stripslashes($cql["term"]) . " ";
+      break;
+  }
+  return($ret);
+}
+
+function cql_field_to_ccl($field) {
+global $cql_to_ccl_error;
+$field_map = array ("serverchoice" => "fritekst",
+                    "creator" => "forfatter",
+                    "title" => "titel",
+                    "subject" => "emne",
+                    "identifier" => "is",
+                    "date" => "aar",
+                    "type" => "ma",
+                    "language" => "sp",
+                    "possessinginstitution" => "ln",
+                    "id" => "lid",
+                    "notes" => "no");
+
+  if (isset($field_map[ strtolower($field) ]))
+    return($field_map[ strtolower($field) ]);
+  else
+    $cql_to_ccl_error = "Unknown/unsupported field code " . $field;
+}
+function cql_operator_to_ccl($op) {
+global $cql_to_ccl_error;
+  switch ($op) {
+    case "and":
+    case "or":
+    case "not":
+      return($op);
+      break;
+    case "prox":
+      return(" ");
+      break;
+    case "scr":
+      return("");
+      break;
+  }
+}
+function cql_relation_to_ccl($rel) {
+global $cql_to_ccl_error;
+  switch ($rel) {
+    case ">":
+    case "<":
+    case "=":
+      return($rel);
+      break;
+    case "exact":
+      return("=");
+      break;
+  }
+}
+
+?>

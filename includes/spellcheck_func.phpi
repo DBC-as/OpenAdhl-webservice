@@ -1,0 +1,409 @@
+<?php
+require("soap_func.phpi");
+require("sentence_mutate_func.phpi");
+
+function spellcheck_word($word, $LCID=1030, $thesaurusfriendlyname="danish", $maxpermutations=2000, $maxnumsuggestions=8, $minweight="0.4", $spellcheckonlyifnotexists="false", $innormalization="ENormalizationIndex", $outnormalization="ENormalizationIndex") {
+
+	$word = utf8_decode($word);
+
+	$http["url"] = SPELLCHECK_SERVER_URL;
+	$http["timeout"] = 30;
+	if (defined("SPELLCHECK_PROXY")) $http["proxy"] = SPELLCHECK_PROXY;
+	$http["SOAPAction"] = SPELLCHECK_SOAP_ACTION."/Spellcheck";
+	$http["post"] = '<?xml version="1.0" encoding="utf-8"?> <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"> <soap:Body> <Spellcheck xmlns="'.SPELLCHECK_SOAP_ACTION.'"> 
+	<Word>'.utf8_encode($word).'</Word> 
+	<LCID>'.$LCID.'</LCID> 
+	<ThesaurusFriendlyName>'.$thesaurusfriendlyname.'</ThesaurusFriendlyName> 
+	<MaxNumSuggestions>'.$maxnumsuggestions.'</MaxNumSuggestions> 
+	<MaxPermutations>'. $maxpermutations.'</MaxPermutations> 
+	<MinWeight>'.$minweight.'</MinWeight> 
+	<SpellcheckOnlyIfNotExists>'.$spellcheckonlyifnotexists.'</SpellcheckOnlyIfNotExists> 
+	<InNormalization>'.$innormalization.'</InNormalization> 
+	<OutNormalization>'.$outnormalization.'</OutNormalization> </Spellcheck> </soap:Body> </soap:Envelope>';
+	soap_exec($http);
+		
+	$reply=trim($http["reply"]);
+
+	if(strcmp($reply,"")) {
+     		verbose(WARNING, "Spellcheck did not know the word: " . $word);
+	}
+
+	return $http;
+}
+
+function spellcheck_find_candidates($sentence, $LCID=1030, $thesaurusfriendlyname="danish", $maxpermutations=2000, $maxnumsuggestions=8, $minweight="0.4", $spellcheckonlyifnotexists="false", $innormalization="ENormalizationIndex", $outnormalization="ENormalizationIndex") {
+
+	$sentence=utf8_decode($sentence);
+
+	$http["url"] = SPELLCHECK_SERVER_URL;
+	$http["timeout"] = 30;
+	if (defined("SPELLCHECK_PROXY")) $http["proxy"] = SPELLCHECK_PROXY;
+	$http["SOAPAction"] = SPELLCHECK_SOAP_ACTION."/FindSpellCandidates";
+	$http["post"] = '<?xml version="1.0" encoding="utf-8"?> <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"> <soap:Body> 
+	 <FindSpellCandidates xmlns="'.SPELLCHECK_SOAP_ACTION.'">
+	<Sentence>'.utf8_encode($sentence).'</Sentence> 
+	<LCID>'.$LCID.'</LCID> 
+	<ThesaurusFriendlyName>'.$thesaurusfriendlyname.'</ThesaurusFriendlyName> 
+	</FindSpellCandidates> </soap:Body> </soap:Envelope>';
+
+	soap_exec($http);
+
+	return $http;
+}
+
+
+
+// spell checker
+function get_spellcheck_results(&$set) {
+
+	// first we get fields and terms...
+	$terms_array=extract_fields_terms($set);
+
+
+	// build limits for search query and url parameters
+	$url_limits=collect_url_limit_vars($set);
+	$query_limits=collect_term_limit_vars($set);
+
+	#print_r($url_limits); 
+
+	unset($terms_array["query"]);
+	
+	$i=0;
+
+	#echo "<PRE>"; print_r($terms_array); exit();
+	#print_r($set);
+
+	foreach($terms_array as $k=>$v) {
+
+		if(is_array($v)) {
+			foreach($v as $k2=>$term) {
+
+				$term = trim($term);
+
+				if(preg_match("/^field[0-9]/",$k2)) { 
+					$field=$term;
+					$field_id=$k2;
+				}
+
+				if(preg_match("/^term[0-9]/",$k2)) {
+					$term_id=trim($k2);
+
+					// init result array
+					$results[$i]["SOURCE_WORD"]=$term;
+					$results[$i]["SOURCE_FIELD"]=$field;
+					$results[$i]["SOURCE_QUERY_LIMITS"]=$query_limits;
+					$results[$i]["SOURCE_URL_LIMITS"]=$url_limits;
+					$results[$i]["FIELD_ID"]=$field_id;
+
+					if(preg_match("/ /",$term)) {
+						$is_sentence=true;
+					} else {
+						$is_sentence=false;
+					}
+
+					if($is_sentence==false) {
+					// retrieve spellcheck results in xml if term is single word
+						$xml=spellcheck_word($term);
+						$extract_tag="SUGGESTION";
+						$extract_target="attributes";
+					} else {
+						// OUTDATED!!
+						// retrieve spellcheck results if it's a sentence
+						#$xml=spellcheck_find_candidates($term);
+						#$extract_tag="FINDSPELLCANDIDATESRESULT";
+						#$extract_target="value";
+					}
+
+					if(isset($xml["error"])) {
+						return false;
+					}
+
+					// build struct from xml
+					$struct=xml2struct($xml["reply"]);
+
+					#echo "<PRE>";
+					#echo "STRUCT ##################################################";	
+					#print_r($struct["vals"]);
+					#echo $term;
+
+					// extract suggestions from xml set
+					$suggestion=xmlstruct_extract($struct,$extract_tag, array(), $extract_target);
+					
+					#echo "#################";
+					#print_r($suggestion);
+					#echo "#################";
+
+					// check for sentences
+					if($is_sentence==true) {
+						#echo "we got a sentence $term<br>";
+						
+						// split sentence into array
+						#$sentence=$suggestion[0];
+						$sentence=$term;
+						$sentences=explode(" ", $sentence);
+
+						// init result array index
+						$si=0;
+
+						// loop through words in sentence
+						foreach($sentences as $sentence_k=>$sentence_v) {
+								#echo "<br>sentence: $sentence_v";
+
+								unset($new_sentences[$si]["SPELLCHECK_RESULTS"]);
+								
+								$new_sentences[$si]["SOURCE_SENTENCE"]=strip_tags($sentence);
+
+							// check if it's a spell candidate
+							#if(preg_match("/\<Spell\>/", $sentence_v))	 {
+								$new_word=strip_tags($sentence_v);
+								#$new_sentences[$si]["SOURCE_SENTENCE"]=strip_tags($sentence);
+								$new_sentences[$si]["SOURCE_WORD"]=$new_word;
+
+								// run spellcheck on new word
+								#echo "Running spellcheck on: ".$new_word."<BR>";
+				        if (connection_aborted()) exit();
+
+								$xml2=spellcheck_word($new_word);
+								$extract_tag2="SUGGESTION";
+								$extract_target2="attributes";
+
+								$struct2=xml2struct($xml2["reply"]);
+								$suggestion2=xmlstruct_extract($struct2,$extract_tag2, array(), $extract_target2);
+
+								#$suggestion2=make_unique_suggestions($suggestion2);
+								$new_sentences[$si]["SPELLCHECK_RESULTS"]=$suggestion2;
+
+								// increase sentence index
+								$si++;
+							#} else {
+							#	#$new_sentences[$si]["SOURCE_SENTENCE"]=strip_tags($sentence);
+              #  $new_sentences[$si]["SOURCE_WORD"]=$sentence_v;
+              #  $new_sentences[$si]["SPELLCHECK_RESULTS"][]["WORD"]=$sentence_v;
+							#	#echo "No spell on $sentence_v<br>";
+							#	$si++;
+							#}
+						}
+
+						$suggestion=sentence_mutate($new_sentences, 2);
+
+					} 
+
+					$suggestion=make_unique_suggestions($suggestion);
+
+					#echo "<P>##################################################";	
+					#echo "<pre>";
+					#print_r($new_sentences);
+					#print_r($suggestion);
+
+					// add suggestion to result set.
+					$results[$i]["DATA"]=$suggestion;
+					$i++;
+				}
+			}
+		}
+	}
+
+	#echo "<pre>";
+	#print_r($results);
+
+	return $results;
+}
+
+
+function make_unique_suggestions($suggestions) {
+	$unique_array=array();
+
+	foreach($suggestions as $sk=>$sv) {
+		$unique=strtolower($suggestions[$sk]["WORD"]);
+		if(!in_array($unique,$unique_array)) {
+  		$unique_array[$unique]=$unique;
+		} else {
+  		unset($suggestions[$sk]);
+		}
+	}
+
+	return $suggestions;
+}
+
+
+function spellcheck_shuffle($spellcheck_results) {
+	$i=0;
+	$j=0;
+	$data="";
+
+	$spellcheck_results_cpy=$spellcheck_results;
+	
+	foreach($spellcheck_results as $rootkey=>$rootval) {
+		#echo "Looking in rootkey: $rootkey<BR>";
+		$source_field=$rootval["SOURCE_FIELD"];
+		$field_id=$rootval["FIELD_ID"];
+		$field=$rootval["FIELD_ID"];
+
+
+		foreach($rootval["DATA"] as $subkey=>$subval) {
+
+		$j=0;
+
+			$suggestion_word=$subval["WORD"];
+			$weight=$subval["WEIGHT"];
+
+			#echo "found and added suggest word: $suggestion_word<BR>";
+
+			$data[$i]["DATA"][$j]["SOURCE_FIELD"]=$source_field;
+			$data[$i]["DATA"][$j]["FIELD_ID"]=$field;
+			$data[$i]["DATA"][$j]["VALUE"]=$suggestion_word;
+			$data[$i]["DATA"][$j]["WEIGHT"]=$weight;
+
+			foreach($spellcheck_results_cpy as $rootkey2=>$rootval2) {
+
+			$j++;
+
+				$field_id2=$rootval2["FIELD_ID"];
+
+				$source_field2=$rootval2["SOURCE_FIELD"];
+
+				if($rootkey2 != $rootkey) {
+					$source_word2=$rootval2["SOURCE_WORD"];
+					$source_field2=$rootval2["SOURCE_FIELD"];
+					$data[$i]["DATA"][$j]["SOURCE_FIELD"]=$source_field2;
+					$data[$i]["DATA"][$j]["FIELD_ID"]=$field_id2;
+					$data[$i]["DATA"][$j]["VALUE"]=$source_word2;
+					#echo "found and added source word: $source_word2<BR>";
+				}
+				$j++;
+			}
+			$i++;
+		}
+	}
+	return $data;
+}
+
+
+
+function get_spellcheck_search_results(&$spellcheck_results, $drop_limits=0, $drop_registers=0) {
+
+	global $CCL_SUB, $spellcheck_html_out, $spellcheck_status_html, $spell_tmpl, $spell_status_tmpl, $hits_located;
+
+	$drop_limits=trim($drop_limits);
+	$drop_registers=trim($drop_registers);
+
+	$spell_tmpl = get_template("stavecheck.html");
+	// altid kommando i tmpl
+  //$spell_tmpl->setVar("spellcheck_origin", $_GET["origin"]);
+
+	load_lang_text("stavekontrol");
+	text_to_template($spell_tmpl, "stavekontrol");
+
+	$spell_status_tmpl = get_template("stavecheck_status.html");
+
+	load_lang_text("stavekontrol");
+	text_to_template($spell_status_tmpl, "stavekontrol");
+
+	// shuffle words for various combinations
+	$shuffle_data=spellcheck_shuffle($spellcheck_results);
+
+	// extract limits
+	$query_limits=$spellcheck_results[0]["SOURCE_QUERY_LIMITS"];
+	$url_limits=$spellcheck_results[0]["SOURCE_URL_LIMITS"];
+
+	#echo "<PRE>"; print_r($spellcheck_results); exit();
+	#echo "<PRE>"; print_r($shuffle_data); exit();
+
+	$status=getext("spellcheck_search_looking");
+	$spell_status_tmpl->setVar("spellcheck_status",$status);
+
+	#echo "<pre>";
+	#print_r($spell_tmpl->_vars["spellcheck_search_looking"]);
+	#exit();
+
+	$spellcheck_status_html = trim(grab_template($spell_status_tmpl));
+	echo '<script language="javascript">document.getElementById("stavecheck_status").innerHTML=\''.$spellcheck_status_html.'\';</script>';
+	flush();
+
+	$spellcheck_hits_found=0;
+	foreach($shuffle_data as $k=>$v) {
+
+		$query="";
+		$url_param="";
+
+		#echo "<PRE>";
+		#print_r($v["DATA"]);
+
+		foreach($v["DATA"] as $k2=>$v2)	{
+
+			$field_id=$v2["FIELD_ID"];
+			$field=$v2["SOURCE_FIELD"];
+			$value=$v2["VALUE"];
+
+			$value=utf8_decode($value);
+
+			if(isset($v2["WEIGHT"])) {
+				$weight=$v2["WEIGHT"];
+			}
+				
+			$query.=$field."=".$value." og ";
+
+			$term_id=str_replace("field","term",$field_id);
+			$field=$field;
+			$value=$value;
+			$url_param.="&".$field_id."=".$field."&".$term_id."=".$value;
+		}
+
+		if(!empty($query_limits) && ($drop_limits!="1")) {
+			$query_show=strtolower($query).$query_limits;
+			$query.=$query_limits;
+		} else {
+			$query=preg_replace("/ og $/","",$query);
+			$query_show=strtolower($query);
+		}
+
+		if($drop_limits!="1") {
+			$url_param.=$url_limits;
+		}
+		$query=strtolower($query);
+		
+    if (connection_aborted()) exit();
+
+		$spellcheck_hits_found=0;
+
+		if($query!=$_GET["ignore_ccl"]) {
+			$hits=get_search_hit($query);
+
+		#$qo="q: $query __________ $hits<BR>";
+		#echo $qo;
+
+			if($hits>0) {
+				$hits_located=1;
+				$spellcheck_hits_found=1;
+				$spellcheck_status_html=getext("spellcheck_search_found");
+			
+				$spell_status_tmpl->setVar("spellcheck_status",$status);
+				echo '<script language="javascript">document.getElementById("stavecheck_status").innerHTML=\'<b>'.$spellcheck_status_html.'</b>\';</script>';
+				$query_show=str_replace($CCL_SUB['match'],$CCL_SUB['replace'], $query_show);
+			
+				$spell_tmpl->setVar("query",$query_show);
+				$spell_tmpl->setVar("url_param",urlencode($url_param));
+				$spell_tmpl->setVar("hits",$hits);
+				$spellcheck_html_out .= trim(grab_template($spell_tmpl));
+				echo "\r\n<!-- Spellcheck: tried looking for ".$query." and has $hits hits. -->\r\n";
+				echo "\r\n".'<script language="javascript">document.getElementById("stavecheck").innerHTML=\''.$spellcheck_html_out.'\';</script>';
+			} else {
+				echo "\r\n<!-- Spellcheck: tried looking for ".$query." and has $hits hits. -->\r\n";
+			}
+		}
+		flush();
+	} 
+
+	if(!isset($spellcheck_hits_found)) {
+		#$status=getext("spellcheck_search_found_none");
+		#$spell_status_tmpl->setVar("spellcheck_status",$status);
+		#$spellcheck_status_html = trim(grab_template($spell_status_tmpl));
+		#echo '<script language="javascript">document.getElementById("stavecheck_status").innerHTML=\''.$spellcheck_status_html.'\';</script>';
+		#flush();
+	}
+
+	return $spellcheck_hits_found;
+}
+
+
+?>

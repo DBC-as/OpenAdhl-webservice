@@ -1,0 +1,33 @@
+; Inifile for adhl                                                                                                     
+
+[setup]
+
+; wsdl for service
+wsdl = adhl.wsdl
+
+; logfile for verbose output
+logfile = /tmp/nypunkt_pjo/adhl.log
+
+; set verboselevel
+;   WARNING - simple warnings
+;   ERROR   - errors in response
+;   FATAL   - major errors      
+;   STAT    - Statístical logging
+;   TIMER   - timer logging      
+;   TRACE   - program trace      
+;   DEBUG   - debugging info     
+;   Z3959   - calls to z3950 services
+;   OCI     - oracle                 
+verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950+OCI
+
+;php file for classmap
+classes = ADHL_classes.php
+
+;settings for database access
+VIP_US=pjo/pjo@tora1.dbc.dk
+VIP_PW=
+VIP_DB=
+TABLE=temp
+
+;baseurl for curl
+baseurl=http://vision.dbc.dk/~pjo/webservices/adhl/server.php

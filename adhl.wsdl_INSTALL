@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<wsdl:definitions name="adhlDefinition"
+  targetNamespace="http://adhl.dk/definitions"
+  xmlns:types="http://adhl.dk/schemas"
+  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+  xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+
+ <wsdl:types>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+      <xs:import namespace="http://adhl.dk/schemas" 
+                  schemaLocation="adhl.xsd"/>
+    </xs:schema>
+  </wsdl:types>
+  
+  <wsdl:message name="RequestADHL">
+    <wsdl:part name="input" element="types:adhlRequest" />
+  </wsdl:message>
+  
+  <wsdl:message name="ResponseADHL">
+    <wsdl:part name="output" element="types:adhlResponse"/>
+  </wsdl:message>
+
+  <wsdl:portType name="ADHLPortType">
+    <wsdl:operation name="ADHLRequest">
+      <wsdl:input message="RequestADHL" />
+      <wsdl:output message="ResponseADHL"/>
+    </wsdl:operation>
+  </wsdl:portType>
+  
+  <wsdl:binding name="ADHLBinding" type="ADHLPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="ADHLRequest">
+      <soap:operation soapAction="ADHLRequest"/>
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+	<soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="ADHL">
+    <wsdl:port name="ADHLPort" binding="ADHLBinding">
+      <soap:address location="http://vision.dbc.dk/~pjo/webservices/adhl/server.php" />
+    </wsdl:port>
+  </wsdl:service>
+   
+</wsdl:definitions>
+
+
