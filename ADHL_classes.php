@@ -1,38 +1,39 @@
 <?php
 class adhlRequest
 {
-	public $id;//idtype
+	public $id;//id
 	public $numRecords;//integer
-	public $sex;//sextype
-	public $age;//ageType
-	public $dateinterval;//interval
+	public $sex;//sexType
+	public $age;//age
+	public $dateinterval;//dateinterval
 	public $outputType;//outPutType
+	public $callback;//string
 }
 class outPutType
 {
 	public $outPutType;//string
 }
-class idtype
+class id
 {
-	public $local;//localid
+	public $localid;//localid
 	public $isbn;//string
-	public $faust;//number
+	public $faust;//integer
 }
 class localid
 {
 	public $lok;//integer
 	public $lid;//string
 }
-class sextype
+class sexType
 {
-	public $sextype;//string
+	public $sexType;//string
 }
-class ageType
+class age
 {
 	public $minAge;//integer
 	public $maxAge;//integer
 }
-class interval
+class dateinterval
 {
 	public $from;//date
 	public $to;//date
@@ -57,11 +58,11 @@ class dc
 }
 $classmap=array("adhlRequest"=>"adhlRequest",
 "outPutType"=>"outPutType",
-"idtype"=>"idtype",
+"id"=>"id",
 "localid"=>"localid",
-"sextype"=>"sextype",
-"ageType"=>"ageType",
-"interval"=>"interval",
+"sexType"=>"sexType",
+"age"=>"age",
+"dateinterval"=>"dateinterval",
 "adhlResponse"=>"adhlResponse",
 "dc"=>"dc");
 ?>

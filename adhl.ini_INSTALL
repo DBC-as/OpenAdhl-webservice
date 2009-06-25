@@ -1,7 +1,6 @@
 ; Inifile for adhl                                                                                                     
-
+;settings for adhl_server
 [setup]
-
 ; wsdl for service
 wsdl = adhl.wsdl
 
@@ -23,11 +22,18 @@ verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950+OCI
 ;php file for classmap
 classes = ADHL_classes.php
 
+;baseurl for curl
+baseurl=http://vision.dbc.dk/~pjo/OpenLibrary/OpenAdhl/trunk/server.php
+
 ;settings for database access
+[database]
 VIP_US=pjo/pjo@tora1.dbc.dk
 VIP_PW=
 VIP_DB=
 TABLE=temp
 
-;baseurl for curl
-baseurl=http://vision.dbc.dk/~pjo/webservices/adhl/server.php
+;section for testing the service
+[HowRU]
+isbn=87-986036-2-0
+outputType=XML
+numRecords=5

@@ -12,6 +12,7 @@ xmlns:types="http://adhl.dk/schemas">
 	<xs:element ref="types:age" minOccurs="0"/>     
 	<xs:element ref="types:dateinterval" minOccurs="0"/>
 	<xs:element name="outputType" type="types:outPutType" minOccurs="0"/>
+	<xs:element name="callback" type="xs:string" minOccurs="0"/>
       </xs:sequence>                                                        
     </xs:complexType>                                                       
   </xs:element>
@@ -19,7 +20,6 @@ xmlns:types="http://adhl.dk/schemas">
   <xs:simpleType name="outPutType">
     <xs:restriction base="xs:string">
       <xs:enumeration value="XML"/>
-      <xs:enumeration value="SOAP"/>
       <xs:enumeration value="JSON"/>
     </xs:restriction>
   </xs:simpleType>
@@ -28,14 +28,14 @@ xmlns:types="http://adhl.dk/schemas">
   <xs:element name="id">
     <xs:complexType>
       <xs:choice>
-	<xs:element ref="types:local"/>
+	<xs:element ref="types:localid"/>
 	<xs:element name="isbn" type="xs:string"/>
 	<xs:element name="faust" type="xs:integer"/>
       </xs:choice>
     </xs:complexType>
   </xs:element>
 
-  <xs:element name="local">
+  <xs:element name="localid">
     <xs:complexType>
       <xs:sequence>
 	<xs:element name="lok" type="xs:integer"/>

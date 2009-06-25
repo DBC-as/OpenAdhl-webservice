@@ -42,7 +42,7 @@
 
   <wsdl:service name="ADHL">
     <wsdl:port name="ADHLPort" binding="ADHLBinding">
-      <soap:address location="http://vision.dbc.dk/~pjo/webservices/adhl/server.php" />
+      <soap:address location="http://vision.dbc.dk/~pjo/OpenLibrary/OpenAdhl/trunk/server.php" />
     </wsdl:port>
   </wsdl:service>
    

@@ -34,102 +34,181 @@ require_once("ws_lib/oci_class.php");
 require_once("includes/search_func.phpi");
 require_once("includes/targets.php");
 
-// get ini-file 
-define(INIFILE, "adhl.ini");
-$config = new inifile(INIFILE);
+/** required for class-mapping*/
+require_once("ADHL_classes.php");
 
-// set constants for soap request
-define(WSDL, $config->get_value("wsdl", "setup"));
-define(CLASSES,$config->get_value("classes","setup"));
-
-/**  include for soap-classes */
-require_once(CLASSES);
-
-// set constants for database-access            
-define(VIP_US,$config->get_value("VIP_US","setup"));
-define(VIP_PW,$config->get_value("VIP_PW","setup"));
-define(VIP_DB,$config->get_value("VIP_DB","setup"));
-define(TABLE,$config->get_value("TABLE","setup"));
-
-// prepare log-object
-$verbose = new verbose($config->get_value("logfile", "setup"), 
-                       $config->get_value("verbose", "setup"));
-
-// prepare timer-object
-$watch = new stopwatch("", " ", "", "%s:%01.3f");
 // ready to go
 
-// check if request comes as postdata -> handle request as soap
-if( isset($HTTP_RAW_POST_DATA) )
+// initialize server
+$server=new adhl_server("adhl.ini");
+// handle the request
+$server->handle_request();
+
+class adhl_server
+{
+  private $config;
+  private $timer;
+  private $verbose;
+
+  public function __construct($inifile)
   {
-    // start the timer
-    $watch->start('adhl:SOAP');
+    $this->config=new inifile($inifile);
+    
+    if( $this->config->error )
+      {
+	die("Cannot read " . $inifile." Error: ".$this->config->error );
+      }
+    
+    // initialize verbose-object for logging
+    $this->verbose=new verbose($this->config->get_value("logfile", "setup"),
+			       $this->config->get_value("verbose", "setup")); 
 
-    // prepare soap-server
-    $wsdlpath=WSDL;
-    $params = array(
-		    "trace"=>true,                
+    // get section for db-access
+    $db = $this->config->get_section("database");
+    // set constants for database-access            
+    define(VIP_US,$db["VIP_US"]);
+    define(VIP_PW,$db["VIP_PW"]);
+    define(VIP_DB,$db["VIP_DB"]);
+    define(TABLE,$db["TABLE"]);
+
+    // start the timer    
+    $this->watch = new stopwatch("", " ", "", "%s:%01.3f");
+    $this->watch->start('OpenAdhl');
+  }
+
+  public function handle_request()
+  {
+    if( isset($_GET["HowRU"]) )
+      {
+	$this->HowRU();
+	return;
+      }
+    elseif( isset($GLOBALS['HTTP_RAW_POST_DATA']) )
+      { 	
+	$this->soap_request(); 
+	return;
+      }       
+    elseif( !empty($_SERVER['QUERY_STRING']) )
+      {
+        $response = $this->rest_request();
+	return;
+      }
+    else // no valid request was made; generate an error
+
+      {
+	$this->send_error();
+	return;
+      }    
+  }
+
+  /**
+   * Test function  
+   */
+  protected function HowRU()
+  {
+    $req=$this->config->get_section("HowRU");
+    $request=new adhlRequest();
+
+    $id->isbn=$req['isbn'];
+    if(  $idarray=helpFunc::get_lid_and_lok($req['isbn']) )
+      {
+	$request->id = new id();
+	$request->id->faust=$idarray['lid']; 
+	
+	$request->numRecords=$req['numRecords'];
+	$request->outputType=$req['outputType'];
+	
+	$met=new methods();
+	$response=$met->ADHLRequest($request);
+      }
+    else
+      {
+	$response = new adhlResponse();
+	$response->error="Could not look up(Zsearch) isbn: ".$req['isbn'];
+      }
+
+    if( $response->error )
+      die( "not so good ".$response->error );
+    else
+      die("gr8");    
+  }
+
+
+  protected function soap_request()
+  {    
+    $params = array("trace"=>true,                
 		    "classmap"=>$classmap);
-
     try
       {
-	$server = new SoapServer($wsdlpath,$params);
+	$server = new SoapServer($this->config->get_value("wsdl","setup"),$params);
 	$server->setClass('methods');
 	$server->handle();  
       }
-    catch( SoapFault $exception ){$verbose->log(FATAL,print_r($exception));};
-    
-    // log the timer
-    $watch->stop('adhl:SOAP');
-    $verbose->log(TIMER, $watch->dump());
+    catch( SoapFault $exception ){$this->verbose->log(FATAL,print_r($exception));};
   }
 
-// check if request is REST -> handle request according to chosen outputtype
-else
-  {  
-    // start the timer
-    $watch->start('adhl:XML and JSON');
-    
-    $request = helpFunc::get_request();
+  protected function rest_request($request=null)
+  {   
+    if( empty($request) )
+      $request = helpFunc::get_request();
 
     $met = new methods();
-    $response= $met->ADHLRequest($request);  
-    switch( $request->outputType )
+    $response = $met->ADHLRequest($request);
+       
+    $this->handle_response($request,$response);    
+  }
+
+  protected function handle_response($request,$response)
+  {
+    $type = "type";
+    if( !empty($request->outputType) )
+      $type=strtolower($request->outputType);
+    
+    switch($type)
       {
-      case "JSON":
-	echo json_encode($response);
-	
-	// log the timer
-	$watch->stop('adhl:XML and JSON');
-	$verbose->log(TIMER, $watch->dump());
-
+      case "json":
+	if( !empty($request->callback) )
+	  echo $request->callback." && ".$request->callback."(".json_encode($response).")";
+	else
+	  echo json_encode($response);
 	break;
-      case "XML":
-	$result=xml_func::object_to_xml($response);
+      case "xml":
 	header('Content-Type:text/xml;charset=UTF-8');
-	echo $result;
-
-	// log the timer
-	$watch->stop('adhl:XML and JSON');
-	$verbose->log(TIMER, $watch->dump());
-
+	echo xml_func::object_to_xml($response);
 	break;
       default:
-	echo "Please give correct outputType: 'JSON' or 'XML'";
-
-	// log the timer
-	$watch->stop('adhl:XML and JSON');
-	$verbose->log(TIMER, $watch->dump());
-
+	$message="Please pass a valid outputType (XML or JSON)";
+	$this->send_error($message);
 	break;
-      }
+      }     
   }
+
+  protected function send_error($message=null)
+  {
+    if( empty($message) )
+      $message = xml_func::UTF8("Please give me something to look for like ?isbn=87-986036-2-0&outputType=XML");
+
+    $response=new adhlResponse();
+    $response->error=$message;
+    
+    header('Content-Type:text/xml;charset=UTF-8');
+    echo xml_func::object_to_xml($response);
+    
+  }
+
+  public function __destruct()
+  {
+    $this->watch->stop('OpenAdhl');
+    $this->verbose->log(TIMER, $this->watch->dump());
+  }
+}
+
 
 /** \brief class for handling request*/
 class methods
 {
   /** \brief member holds sql */
-  private static $sql;
+  private $sql;
 
   /** \brief The function handling the request
    * @params $adhlRequest; the request given from soapclient or derived from url-query
@@ -170,7 +249,7 @@ class methods
          
     // sort the result
     $response->dc = $this->sort_array($ids, $dcarray );    
-
+   
     return $response;	       
   }
 
@@ -187,7 +266,7 @@ class methods
     
     $ids = $this->get_ids($request);   
 
-    if( !$ids )
+    if( empty($ids) )
       return false;
 
     if( $request->id->local->lok )
@@ -209,10 +288,10 @@ class methods
    */
   private function get_ids(adhlRequest $request)
   {
-    if(! $this->sql = $this->get_sql($request) )
+    if(! $sql=$this->get_sql($request) )
 	return false;    
 
-    $db = new db($this->sql);    
+    $db = new db($sql);
     while( $row = $db->get_row() )
       {	
 	$res['lid']=$row["LID"];
@@ -279,11 +358,11 @@ class methods
     // set where clause
     $where = "where ";
     
-   if( $request->id->local->lid && $request->id->local->lok)
+   if( $request->id->localid->lid && $request->id->localid->lok)
       {
-     	$where .="l1.lokalid = '".$request->id->local->lid."'";
+     	$where .="l1.lokalid = '".$request->id->localid->lid."'";
 	$where .="\n";
-	$where .='and l1.laant_pa_bibliotek = '.$request->id->local->lok;
+	$where .='and l1.laant_pa_bibliotek = '.$request->id->localid->lok;
       } 
 
     else if( $request->id->faust )
@@ -324,9 +403,7 @@ from '.TABLE.' l2 inner join '.TABLE.' l1 on l1.laanerid=l2.laanerid
 '.$where.((strlen($and)>7)?"\n".$and:"\n").'order by l2.laan_i_klynge desc
 )
 where rownum<='.$request->numRecords;
-
-    self::$sql=$query;
-    // return query
+    
     return $query;
   }
  
@@ -392,8 +469,8 @@ class db
   // constructor
   function db($query)
   {
-    $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);
-    $this->oci->connect();    
+    $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);   
+    $this->oci->connect();     
     $this->oci->set_query($query);   
   }
 
@@ -418,7 +495,7 @@ class db
 
 /** \brief
  *  Class holds static functions used for handling the request.
- *  only function get_request is called from outside the class; 
+ *  only functions get_request and get_lid_and_lok is called from outside the class; 
  *  other functions are private
 */
 class helpFunc
@@ -434,13 +511,13 @@ class helpFunc
 	$localid = new localid();
 	$localid->lok =$_GET['lok'];
 	$localid->lid =$_GET['lid'];
-	$request->id = new idtype();
-	$request->id->local=$localid;      
+	$request->id = new id();
+	$request->id->localid=$localid;      
       }
     
     else if( $_GET['faust'] )
       {
-	$request->id = new idtype();
+	$request->id = new id();
 	$request->id->faust=$_GET['faust'];  	
       }
     else if( $_GET['isbn'] )
@@ -450,7 +527,7 @@ class helpFunc
 	    return false;
 	
 	//	print_r($idarray);
-	$request->id = new idtype();
+	$request->id = new id();
 	$request->id->faust=$idarray['lid']; 
       }
     
@@ -459,6 +536,11 @@ class helpFunc
       $request->outputType = $_GET['outputType'];
     else
       $request->outputType = "JSON";
+
+    //callback
+    if( $_GET['callback'] )
+      $request->callback=$_GET['callback'];
+
     // age-interval
     if( $_GET['minAge'] || $_GET['maxAge'] )
       {
@@ -501,7 +583,7 @@ class helpFunc
   *   @param $isbn; the isbn-number to look for
   *   @returns $idarray; an array with ONE element (lid,lok)
   */
-  private static function get_lid_and_lok($isbn)
+  public static function get_lid_and_lok($isbn)
   {
     global $TARGET;// from include file : targets.php
     global $search;  
@@ -575,8 +657,5 @@ function load_lang_tab()
 {
   // TODO do error-logging
 }
-
-
-
 
 ?>

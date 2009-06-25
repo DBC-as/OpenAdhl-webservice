@@ -29,7 +29,7 @@ require_once("ws_lib/inifile_class.php");
 //header("Content-Type: text/html; charset=utf-8");
 
 // disable caching while developing                      
-//ini_set('soap.wsdl_cache_enabled',0);                 
+ini_set('soap.wsdl_cache_enabled',0);                 
 
 // get ini-file
 define(INIFILE, "adhl.ini");
@@ -70,8 +70,9 @@ function XML_and_JSON()
 	echo get_form();
 	exit;
       }
+ 
     $url = get_request_url($request);
-    // echo $url."<br/>";
+    
     $curl=new curl();    
     $curl->set_url($url);
   
@@ -96,7 +97,7 @@ function SOAPRequest()
 
   if( !$request = get_request() )
     exit;  
-  
+
   try{
     // TODO once php-version is updated; give $param as input to soap-client for proper class-mapping
     $client = new SoapClient($wsdlpath,$param);
@@ -109,7 +110,7 @@ function SOAPRequest()
       var_dump($exception);
       exit;
     }
-  // echo $client->__getLastResponse();
+  //  echo $client->__getLastResponse();
   echo "<div class='container'>";
 
  
@@ -119,7 +120,7 @@ function SOAPRequest()
   echo "</div>\n";
 
  
-  //var_dump($response);
+  //  var_dump($response);
   //print_r($response);
   
   //echo $response->error;
@@ -178,10 +179,10 @@ function get_request_url(adhlRequest $request)
 {
   $params = "?";
   // lok and lid
-  if( $request->id->local->lok && $request->id->local->lid )
+  if( $request->id->localid->lok && $request->id->localid->lid )
     {
-      $params.="lok=".$request->id->local->lok;
-      $params.="&lid=".$request->id->local->lid;
+      $params.="lok=".$request->id->localid->lok;
+      $params.="&lid=".$request->id->localid->lid;
     }
   else
     return "";
@@ -308,8 +309,8 @@ function get_request()
       $localid = new localid();
       $localid->lok = $_POST["lok"];//714700;
       $localid->lid = $_POST["lid"];//"00122181";
-      $request->id = new idtype();
-      $request->id->local=$localid;
+      $request->id = new id();
+      $request->id->localid=$localid;
     }
   else // both lid and lok must be set for the request to make sense; exit with an error
     {
