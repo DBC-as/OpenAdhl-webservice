@@ -2,7 +2,16 @@
 elementFormDefault="qualified"
 targetNamespace="http://adhl.dk/schemas"
 xmlns:types="http://adhl.dk/schemas">
+<xs:annotation>
+<xs:documentation xml:lang="eng">This file is part of OpenSearch.
+Copyright © 2009, Dansk Bibliotekscenter a/s,  Tempovej 7-11, DK-2750 Ballerup, Denmark. CVR: 15149043
 
+OpenSearch is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+OpenSearch is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with OpenSearch.  If not, see http://www.gnu.org/licenses/</xs:documentation>
+</xs:annotation>
   <xs:element name="adhlRequest">
     <xs:complexType>             
       <xs:sequence>              
@@ -72,7 +81,7 @@ xmlns:types="http://adhl.dk/schemas">
   <xs:element name="adhlResponse">
     <xs:complexType>
       <xs:sequence>
-        <xs:element ref="types:dc" minoccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="types:dc" minOccurs="0" maxOccurs="unbounded"/>
 	<xs:element name="error" type="xs:string" minOccurs="0"/>
       </xs:sequence>
     </xs:complexType>
