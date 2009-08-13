@@ -4,7 +4,6 @@
   xmlns:types="http://adhl.dk/schemas"
   xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
   xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
-  <wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:types="http://oss.dbc.dk/ns/opensearch" xmlns:osw="http://oss.dbc.dk/ns/opensearch_wsdl"  xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://oss.dbc.dk/ns/opensearch_wsdl" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
 <wsdl:documentation>This file is part of OpenSearch.
 Copyright © 2009, Dansk Bibliotekscenter a/s,  Tempovej 7-11, DK-2750 Ballerup, Denmark. CVR: 15149043
 
