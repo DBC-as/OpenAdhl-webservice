@@ -138,13 +138,13 @@ class adhl_server
   {    
     $params = array("trace"=>true,                
 		    "classmap"=>$classmap);
-    try
+     try
       {
 	$server = new SoapServer($this->config->get_value("wsdl","setup"),$params);
 	$server->setClass('methods');
 	$server->handle();  
       }
-    catch( SoapFault $exception ){$this->verbose->log(FATAL,print_r($exception));};
+      catch( SoapFault $exception ){$this->verbose->log(FATAL,print_r($exception));};
   }
 
   protected function rest_request($request=null)
@@ -209,6 +209,8 @@ class methods
 {
   /** \brief member holds sql */
   private $sql;
+  
+  private $test;
 
   /** \brief The function handling the request
    * @params $adhlRequest; the request given from soapclient or derived from url-query
@@ -216,6 +218,7 @@ class methods
   */
   public function ADHLRequest(adhlRequest $adhlRequest)
   {
+    
      // prepare zsearch
     global $TARGET;// from include file : targets.php
     global $search;// array holds parameters and result for Zsearch
@@ -227,17 +230,19 @@ class methods
     // set the search array and get ids from database
     $ids=$this->set_search($adhlRequest,$search);
 
+   
+
     // check for errors
     if( !$ids )
       {
-	$response->error = " No results found ";
+	//	$response->error = " No results found ";
 	return $response;
       }
 
      if( $search["error"] )
       {
 	// TODO log
-	$response->error=$search["error"];
+	// $response->error=$search["error"];
 	return $response;
 	}
 
@@ -248,8 +253,9 @@ class methods
 	  $dcarray[]=$this->get_abm_dc($rec["record"]);
          
     // sort the result
-    $response->dc = $this->sort_array($ids, $dcarray );    
+    $response->dc = $this->sort_array($ids, $dcarray );      
    
+
     return $response;	       
   }
 
@@ -267,16 +273,18 @@ class methods
     $ids = $this->get_ids($request);   
 
     if( empty($ids) )
-      return false;
+      {
+	return false;
+      }
 
-    if( $request->id->local->lok )
-      $search['bibkode']=$request->id->local->lok;
+    if( $request->id->localid->lok )
+      $search['bibkode']=$request->id->localid->lok;
 
     $search["step"]=$request->numRecords;
     
     $ccl=$this->get_ccl_from_ids($ids); 
     $search["ccl"]=$ccl;
-    
+    // do the actual z3950 search to get results in searcharray
     Zsearch($search); 
 
     return $ids;
@@ -289,7 +297,9 @@ class methods
   private function get_ids(adhlRequest $request)
   {
     if(! $sql=$this->get_sql($request) )
+      {
 	return false;    
+      }	
 
     $db = new db($sql);
     while( $row = $db->get_row() )
@@ -299,6 +309,7 @@ class methods
 	$ids[]=$res;
       }
 
+    //$db->__destruct();
     return $ids;
   }
   
@@ -353,28 +364,45 @@ class methods
    *  @param $adhlRequest; current request
    *  @return $sql; sql formatted from given request
    */
-  private function get_sql($request)
+  private function get_sql(adhlRequest $request)
   {
-    // set where clause
-    $where = "where ";
-    
-   if( $request->id->localid->lid && $request->id->localid->lok)
+       // set where clause
+    $where = "where ";     
+   
+    // if isbn is set - set localid and location via z-search
+     if( $request->id->isbn )
+      {	
+	if( $idarr = helpFunc::get_lid_and_lok($request->id->isbn) )
+	  {
+	    $request->id->faust=$idarr['lid'];	    
+	  }
+	else
+	  return false;
+      }
+
+    if( $request->id->localid->lid && $request->id->localid->lok)
       {
      	$where .="l1.lokalid = '".$request->id->localid->lid."'";
 	$where .="\n";
 	$where .='and l1.laant_pa_bibliotek = '.$request->id->localid->lok;
+	$where .="\n";
+	// do NOT select same work
+	$where .="and l2.lokalid != '".$request->id->localid->lid."'";
       } 
 
     else if( $request->id->faust )
       {
 	// this is the easy part. libraries always use faust-number as localid
 	$where .= 'l1.lokalid = '.$request->id->faust;
+	// do NOT select same work
+	$where .= 'and l2.lokalid != '.$request->id->faust;
       }
+    
     else // id was not set or wrong; 
       {
 	$this->sql = "ID was not set or wrong";
 	return false;
-	}
+      }   
     
     // set and clause
      
@@ -394,6 +422,7 @@ class methods
     if( $request->dateinterval->to )
       $and .= "and l2.dato < to_date('".$request->dateinterval->to."','dd/mon/yy')\n";    
 
+    
     //set query    
     $query =
 'select /* first_rows_10 */ lid from
@@ -471,7 +500,9 @@ class db
   {
     $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);   
     $this->oci->connect();     
-    $this->oci->set_query($query);   
+    //  $this->oci->set_persistent();
+    $this->oci->set_query($query);
+    
   }
 
   /** return one row from db */
@@ -483,7 +514,8 @@ class db
   /** destructor; disconnect from database */
   function __destruct()
   {
-    $this->oci->disconnect();
+    //  if( $this->oci )
+      $this->oci->destructor();
   }  
 
   /** get error from oci-class */ 
