@@ -98,6 +98,8 @@ function SOAPRequest()
   if( !$request = get_request() )
     exit;  
 
+  // var_dump($request);
+
   try{
     // TODO once php-version is updated; give $param as input to soap-client for proper class-mapping
     $client = new SoapClient($wsdlpath,$param);
@@ -110,9 +112,11 @@ function SOAPRequest()
       var_dump($exception);
       exit;
     }
-  //  echo $client->__getLastResponse();
-  echo "<div class='container'>";
 
+  //echo $client->__getLastResponse();
+  // echo $client->__getLastRequest();
+ 
+  echo "<div class='container'>";
  
   echo get_form($request);
   echo get_results($response);
@@ -121,9 +125,10 @@ function SOAPRequest()
 
  
   //  var_dump($response);
-  //print_r($response);
+  //print_r($request);
   
-  //echo $response->error;
+ 
+  
 }
 ?>
 
@@ -312,6 +317,12 @@ function get_request()
       $request->id = new id();
       $request->id->localid=$localid;
     }
+  // isbn
+  else if( !empty($_POST["isbn"]) )
+    {
+      //$request->id=new id();
+      $request->id->isbn=$_POST["isbn"];        
+    }
   else // both lid and lok must be set for the request to make sense; exit with an error
     {
       return false;
@@ -339,7 +350,7 @@ function get_request()
   // age interval; either min- or max-age can be set
   if( !empty($_POST["minage"]) || !empty($_POST["maxage"])  )
     {
-      $age=new ageType();
+      $age=new age();
       if( !empty($_POST["minage"]) )
 	$age->minAge=$_POST["minage"];//10;
       if( !empty($_POST["maxage"]) )
@@ -351,7 +362,7 @@ function get_request()
   // outputType - can be set or not
   if( !empty($_POST["outputType"]) )
       $request->outputType = $_POST["outputType"];
-
+  
   return $request;
 }
 
@@ -438,6 +449,10 @@ $ret.='>k</option>
 </div>
 
 <div class="break"></div>
+
+<div class="post">
+<input type="text" name="isbn"/>
+</div>
 
 <input type="submit" name="submit" value="Go"/>
 

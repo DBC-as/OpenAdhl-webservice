@@ -94,10 +94,12 @@ class adhl_server
 	return;
       }
     else // no valid request was made; generate an error
-
       {
-	$this->send_error();
-	return;
+	Header( "HTTP/1.1 303 See Other" );
+	Header( "Location: example.php" ); 
+	exit;
+	//$this->send_error();
+	//return;
       }    
   }
 
@@ -395,6 +397,7 @@ class methods
 	// this is the easy part. libraries always use faust-number as localid
 	$where .= 'l1.lokalid = '.$request->id->faust;
 	// do NOT select same work
+	$where .="\n";
 	$where .= 'and l2.lokalid != '.$request->id->faust;
       }
     
