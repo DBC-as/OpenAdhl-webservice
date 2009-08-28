@@ -93,7 +93,7 @@ class adhl_server
         $response = $this->rest_request();
 	return;
       }
-    else // no valid request was made; generate an error
+    else // no valid request was made; go to default client
       {
 	Header( "HTTP/1.1 303 See Other" );
 	Header( "Location: example.php" ); 
@@ -237,16 +237,17 @@ class methods
     // check for errors
     if( !$ids )
       {
-	//	$response->error = " No results found ";
+	$response->error = " No results found ";
+	//	$response->error=$this->sql;
 	return $response;
       }
 
      if( $search["error"] )
       {
 	// TODO log
-	// $response->error=$search["error"];
+	$response->error=$search["error"];
 	return $response;
-	}
+      }
 
     // get result as array
     $dcarray=array();
@@ -257,6 +258,7 @@ class methods
     // sort the result
     $response->dc = $this->sort_array($ids, $dcarray );      
    
+    //$response->error= $this->sql;
 
     return $response;	       
   }
@@ -311,8 +313,7 @@ class methods
 	$ids[]=$res;
       }
 
-    //$db->__destruct();
-    return $ids;
+     return $ids;
   }
   
   /**\brief  Function sorts result from Zsearch
@@ -388,6 +389,8 @@ class methods
 	$where .="\n";
 	$where .='and l1.laant_pa_bibliotek = '.$request->id->localid->lok;
 	$where .="\n";
+	$where .= "and ((select count(laanerid) from laan  where lokalid=l2.lokalid)>10)";
+	$where .= "\n";
 	// do NOT select same work
 	$where .="and l2.lokalid != '".$request->id->localid->lid."'";
       } 
@@ -395,10 +398,12 @@ class methods
     else if( $request->id->faust )
       {
 	// this is the easy part. libraries always use faust-number as localid
-	$where .= 'l1.lokalid = '.$request->id->faust;
+	$where .= "l1.lokalid = '".$request->id->faust."'";
+	$where .= "\n";
+	$where .= "and ((select count(laanerid) from laan where lokalid=l2.lokalid)>10)";
 	// do NOT select same work
 	$where .="\n";
-	$where .= 'and l2.lokalid != '.$request->id->faust;
+	$where .= "and l2.lokalid != '".$request->id->faust."'";
       }
     
     else // id was not set or wrong; 
@@ -435,7 +440,9 @@ from '.TABLE.' l2 inner join '.TABLE.' l1 on l1.laanerid=l2.laanerid
 '.$where.((strlen($and)>7)?"\n".$and:"\n").'order by l2.laan_i_klynge desc
 )
 where rownum<='.$request->numRecords;
-    
+
+    $this->sql=$query;
+
     return $query;
   }
  
@@ -557,7 +564,6 @@ class helpFunc
       }
     else if( $_GET['isbn'] )
       {
-	// TODO handle isbn.. lookup equivalent faust-number from somewhere
 	if( ! $idarray=self::get_lid_and_lok($_GET['isbn']) )
 	    return false;
 	
