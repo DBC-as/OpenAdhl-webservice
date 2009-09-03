@@ -124,8 +124,8 @@ function SOAPRequest()
   echo "</div>\n";
 
  
-  // var_dump($response);
-  //print_r($request);
+  //   var_dump($response);
+  // print_r($request);
   
  
   
@@ -332,7 +332,7 @@ function get_request()
   // date interval; either from- or to-date can be set
   if( !empty($_POST["from"]) || !empty($_POST["to"]) )
     {
-      $date=new interval();
+      $date=new dateinterval();
       if( !empty($_POST["from"]) )
 	$date->from=$_POST["from"];//'04-SEP-07';
       if( !empty($_POST["to"]) )
@@ -403,21 +403,21 @@ $ret.='
 
 <div class="post">
 <p>  Bibliotekskode: </p>
-<input type="text" name="lok" value="'.(( $request->id->local->lok )?$request->id->local->lok:'715700').'"/>
+<input type="text" name="lok" value="'.(( $request->id->localid->lok )?$request->id->localid->lok:'715700').'"/>
 </div>
 <div class="post">
 <p> Lokalid :</p>
-<input type="text" name="lid" value="'.(( $request->id->local->lid )?$request->id->local->lid:'22716360').'"/>
+<input type="text" name="lid" value="'.(( $request->id->localid->lid )?$request->id->localid->lid:'27650341').'"/>
 </div>
 
 <div class="break"></div>
 
 <div class="post">
-  <p>Fra:(DD-MMM-YY)</p>
+  <p>Fra:(YYYYMMDD)</p>
 <input type="text" name="from" value="'.(( $request->dateinterval->from )?$request->dateinterval->from:'').'"/>
 </div>
 <div class="post">
-  <p>Til:(DD-MMM-YY)</p>
+  <p>Til:(YYYYMMDD)</p>
 <input type="text" name="to" value="'.(( $request->dateinterval->to )?$request->dateinterval->to:'').'"/></div>
 
 <div class="break"></div>
@@ -449,10 +449,6 @@ $ret.='>k</option>
 </div>
 
 <div class="break"></div>
-
-<div class="post">
-<input type="text" name="isbn"/>
-</div>
 
 <input type="submit" name="submit" value="Go"/>
 

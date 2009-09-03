@@ -258,7 +258,7 @@ class methods
     // sort the result
     $response->dc = $this->sort_array($ids, $dcarray );      
    
-    //$response->error= $this->sql;
+    // $response->error= $this->sql;
 
     return $response;	       
   }
@@ -389,7 +389,7 @@ class methods
 	$where .="\n";
 	$where .='and l1.laant_pa_bibliotek = '.$request->id->localid->lok;
 	$where .="\n";
-	$where .= "and ((select count(laanerid) from laan  where lokalid=l2.lokalid)>10)";
+	$where .= "and ((select count(laanerid) from laan  where lokalid=l1.lokalid)>5)";
 	$where .= "\n";
 	// do NOT select same work
 	$where .="and l2.lokalid != '".$request->id->localid->lid."'";
@@ -400,7 +400,7 @@ class methods
 	// this is the easy part. libraries always use faust-number as localid
 	$where .= "l1.lokalid = '".$request->id->faust."'";
 	$where .= "\n";
-	$where .= "and ((select count(laanerid) from laan where lokalid=l2.lokalid)>10)";
+	$where .= "and ((select count(laanerid) from laan where lokalid=l1.lokalid)>5)";
 	// do NOT select same work
 	$where .="\n";
 	$where .= "and l2.lokalid != '".$request->id->faust."'";
@@ -425,10 +425,12 @@ class methods
       $and .= "and l2.foedt >= sysdate-".$request->age->maxAge."*365\n";
     // filter by minimum date
     if( $request->dateinterval->from )
-      $and .= "and l2.dato >to_date('".$request->dateinterval->from."','dd/mon/yy')\n";
+      // $and .= "and l2.dato >to_date('".$request->dateinterval->from."','dd/mon/yy')\n";
+      $and .= "and l2.dato > to_date('".$request->dateinterval->from."','YYYYMMDD')\n";
     // filter by maximum date
     if( $request->dateinterval->to )
-      $and .= "and l2.dato < to_date('".$request->dateinterval->to."','dd/mon/yy')\n";    
+      //$and .= "and l2.dato < to_date('".$request->dateinterval->to."','dd/mon/yy')\n";    
+      $and .= "and l2.dato < to_date('".$request->dateinterval->to."','YYYYMMDD')\n";    
 
     
     //set query    
@@ -596,7 +598,7 @@ class helpFunc
     // date-interval
     if( $_GET['from'] || $_GET['to'] )
       {
-	$date=new interval();
+	$date=new dateinterval();
 	if( $_GET['from'] )
 	  $date->from=$_GET['from'];
 	if( $_GET['to'] )
