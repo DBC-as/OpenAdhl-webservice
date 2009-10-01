@@ -70,9 +70,8 @@ function XML_and_JSON()
 	echo get_form();
 	exit;
       }
- 
+
     $url = get_request_url($request);
-    
     $curl=new curl();    
     $curl->set_url($url);
   
@@ -82,6 +81,7 @@ function XML_and_JSON()
 
 function SOAPRequest()
 {
+
   $wsdlpath=WSDL;
   $param = array(    
 		 //"classmap"=>$classmap,
@@ -95,11 +95,11 @@ function SOAPRequest()
       exit;
     }
 
+
   if( !$request = get_request() )
     exit;  
 
-  // var_dump($request);
-
+  print_r($request);
   try{
     // TODO once php-version is updated; give $param as input to soap-client for proper class-mapping
     $client = new SoapClient($wsdlpath,$param);
@@ -113,8 +113,10 @@ function SOAPRequest()
       exit;
     }
 
+  
+
   //echo $client->__getLastResponse();
-  // echo $client->__getLastRequest();
+  //echo $client->__getLastRequest();
  
   echo "<div class='container'>";
  
@@ -124,7 +126,7 @@ function SOAPRequest()
   echo "</div>\n";
 
  
-  //   var_dump($response);
+  //  var_dump($response);
   // print_r($request);
   
  
@@ -184,10 +186,10 @@ function get_request_url(adhlRequest $request)
 {
   $params = "?";
   // lok and lid
-  if( $request->id->localid->lok && $request->id->localid->lid )
+  if( $request->id->localId->lok && $request->id->localId->lid )
     {
-      $params.="lok=".$request->id->localid->lok;
-      $params.="&lid=".$request->id->localid->lid;
+      $params.="lok=".$request->id->localId->lok;
+      $params.="&lid=".$request->id->localId->lid;
     }
   else
     return "";
@@ -199,10 +201,10 @@ function get_request_url(adhlRequest $request)
     $params.="&maxage=".$request->age->maxAge;
 
   // dateinterval
-  if( $request->dateinterval->from )
-    $params.="&from=".$request->dateinterval->from;
-  if( $request->dateinterval->to )
-    $params.="&to=".$request->dateinterval->to;
+  if( $request->dateInterval->from )
+    $params.="&from=".$request->dateInterval->from;
+  if( $request->dateInterval->to )
+    $params.="&to=".$request->dateInterval->to;
 
   // number of records
   if( $request->numRecords )
@@ -226,10 +228,10 @@ function get_request_url(adhlRequest $request)
 */
 function get_results(&$response)
 {
-$count=count($response->dc);
+$count=count($response->record);
 $rec;
 if( $count >= 1 ) 
-  foreach( $response->dc as $dc )
+  foreach( $response->record as $dc )
     {
       $rec.= '<div class="record">';
       // set link to bib.dk
@@ -311,11 +313,11 @@ function get_request()
   // lok ( library code ) and lid ( local id )
   if( !empty($_POST["lok"]) && !empty($_POST["lid"]) )
     {
-      $localid = new localid();
+      $localid = new localId();
       $localid->lok = $_POST["lok"];//714700;
       $localid->lid = $_POST["lid"];//"00122181";
       $request->id = new id();
-      $request->id->localid=$localid;
+      $request->id->localId=$localid;
     }
   // isbn
   else if( !empty($_POST["isbn"]) )
@@ -332,13 +334,13 @@ function get_request()
   // date interval; either from- or to-date can be set
   if( !empty($_POST["from"]) || !empty($_POST["to"]) )
     {
-      $date=new dateinterval();
+      $date=new dateInterval();
       if( !empty($_POST["from"]) )
 	$date->from=$_POST["from"];//'04-SEP-07';
       if( !empty($_POST["to"]) )
 	$date->to=$_POST["to"];//$date->to='03-OCT-08';
 
-      $request->dateinterval=$date;
+      $request->dateInterval=$date;
     }
 
   // sex ??
@@ -403,22 +405,22 @@ $ret.='
 
 <div class="post">
 <p>  Bibliotekskode: </p>
-<input type="text" name="lok" value="'.(( $request->id->localid->lok )?$request->id->localid->lok:'715700').'"/>
+<input type="text" name="lok" value="'.(( $request->id->localId->lok )?$request->id->localId->lok:'715700').'"/>
 </div>
 <div class="post">
 <p> Lokalid :</p>
-<input type="text" name="lid" value="'.(( $request->id->localid->lid )?$request->id->localid->lid:'27650341').'"/>
+<input type="text" name="lid" value="'.(( $request->id->localId->lid )?$request->id->localId->lid:'27650341').'"/>
 </div>
 
 <div class="break"></div>
 
 <div class="post">
   <p>Fra:(YYYYMMDD)</p>
-<input type="text" name="from" value="'.(( $request->dateinterval->from )?$request->dateinterval->from:'').'"/>
+<input type="text" name="from" value="'.(( $request->dateInterval->from )?$request->dateInterval->from:'').'"/>
 </div>
 <div class="post">
   <p>Til:(YYYYMMDD)</p>
-<input type="text" name="to" value="'.(( $request->dateinterval->to )?$request->dateinterval->to:'').'"/></div>
+<input type="text" name="to" value="'.(( $request->dateInterval->to )?$request->dateInterval->to:'').'"/></div>
 
 <div class="break"></div>
 

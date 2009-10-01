@@ -5,64 +5,64 @@ class adhlRequest
 	public $numRecords;//integer
 	public $sex;//sexType
 	public $age;//age
-	public $dateinterval;//dateinterval
-	public $outputType;//outPutType
+	public $dateInterval;//dateInterval
+	public $outputType;//outputType
 	public $callback;//string
 }
-class outPutType
+class adhlResponse
 {
-	public $outPutType;//string
-}
-class id
-{
-	public $localid;//localid
-	public $isbn;//string
-	public $faust;//integer
-}
-class localid
-{
-	public $lok;//integer
-	public $lid;//string
-}
-class sexType
-{
-	public $sexType;//string
+	public $record;//record
+	public $error;//string
 }
 class age
 {
 	public $minAge;//integer
 	public $maxAge;//integer
 }
-class dateinterval
+class dateInterval
 {
 	public $from;//date
 	public $to;//date
 }
-class adhlResponse
+class id
 {
-	public $dc;//dc
-	public $error;//string
+	public $localId;//localId
+	public $isbn;//string
+	public $faust;//string
 }
-class dc
+class record
 {
 	public $url;//string
-	public $id;//string
+	public $recordId;//string
 	public $identifier;//string
 	public $creator;//string
-	public $alternativename;//string
+	public $alternativeName;//string
 	public $title;//string
 	public $alternative;//string
 	public $description;//string
 	public $type;//string
-	public $rankvalue;//string
+	public $rankValue;//string
+}
+class localId
+{
+	public $lok;//integer
+	public $lid;//string
+}
+class outputType
+{
+	public $outputType;//string
+}
+class sexType
+{
+	public $sexType;//string
 }
 $classmap=array("adhlRequest"=>"adhlRequest",
-"outPutType"=>"outPutType",
-"id"=>"id",
-"localid"=>"localid",
-"sexType"=>"sexType",
-"age"=>"age",
-"dateinterval"=>"dateinterval",
 "adhlResponse"=>"adhlResponse",
-"dc"=>"dc");
+"age"=>"age",
+"dateInterval"=>"dateInterval",
+"id"=>"id",
+"record"=>"record",
+"localId"=>"localId",
+"outputType"=>"outputType",
+"sexType"=>"sexType");
 ?>
