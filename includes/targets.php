@@ -1,6 +1,7 @@
 <?php
 
 define("DEFAULT_HOST", "lakito.dbc.dk:2105");
+define("DANBIB_NEP", "lakito.dbc.dk:21040");
 
 //global $TARGET;	// aht wget
 
@@ -30,14 +31,16 @@ $TARGET["dfa"] = array (
 
 
 $TARGET["dan"] = array (
-    "host"		=> HOST,
+    "host"		=> DANBIB_NEP,
     "database"		=> 'danbibv3',
     "piggyback"		=> true,
+"raw_record"	=> true,
     "authentication"	=> "webgr/dfa/hundepine",
     "fors_name"		=> "danbib",
     "cclfields"		=> 'danbib.ccl2rpn',
     "format"		=> "f2",
-    "formats"		=> array("f2" => "xml/f2", "ws_dc" => "xml/ws_dc"),
+    "formats"		=> array("f2" => "xml/f2", "ws_dc" => "xml/ws_dc",
+				 "abm" => "xml/abm_xml"),
     "start"		=> 1,
     "step"		=> 100,
     "filter"		=> "",
@@ -47,4 +50,6 @@ $TARGET["dan"] = array (
     //"vis_max"		=> 1000000,
     "timeout"		=> 30
 );
+
+
 ?>

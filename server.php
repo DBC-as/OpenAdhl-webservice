@@ -42,7 +42,7 @@ ini_set("soap.wsdl_cache_enabled", "0");
 // initialize server
 $server=new adhl_server("adhl.ini");
 
-// teseting
+// testing
 if( $_GET['soap'] )
   {
     $GLOBALS['HTTP_RAW_POST_DATA']='<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://oss.dbc.dk/ns/adhl"><SOAP-ENV:Body><ns1:adhlRequest><ns1:id><ns1:localId><ns1:lok>715700</ns1:lok><ns1:lid>27650341</ns1:lid></ns1:localId></ns1:id><ns1:numRecords>5</ns1:numRecords><ns1:sex/><ns1:age><ns1:maxAge>15</ns1:maxAge></ns1:age><ns1:dateInterval/><ns1:outputType>SOAP</ns1:outputType><ns1:callback/></ns1:adhlRequest></SOAP-ENV:Body></SOAP-ENV:Envelope>';
@@ -55,7 +55,7 @@ class adhl_server
 {
   private $config;
   private $timer;
-  private $verbose;
+  public  static $verbose; // is this wise.. should verbose-object be static?
 
   public function __construct($inifile)
   {   
@@ -68,7 +68,8 @@ class adhl_server
       }
     
     // initialize verbose-object for logging
-    $this->verbose=new verbose($this->config->get_value("logfile", "setup"),
+   
+    self::$verbose=new verbose($this->config->get_value("logfile", "setup"),
 			       $this->config->get_value("verbose", "setup")); 
 
     // get section for db-access
@@ -82,6 +83,12 @@ class adhl_server
     // start the timer    
     $this->watch = new stopwatch("", " ", "", "%s:%01.3f");
     $this->watch->start('OpenAdhl');
+  }
+
+  public function __destruct()
+  {
+    $this->watch->stop('OpenAdhl');
+    self::$verbose->log(TIMER, $this->watch->dump());
   }
 
   public function handle_request()
@@ -160,6 +167,8 @@ class adhl_server
 
       }
       catch( SoapFault $exception ){$this->verbose->log(FATAL,print_r($exception));};
+
+      
   }
 
   protected function rest_request($request=null)
@@ -214,12 +223,7 @@ class adhl_server
     echo xml_func::object_to_xml($response);
     
   }
-
-  public function __destruct()
-  {
-    $this->watch->stop('OpenAdhl');
-    $this->verbose->log(TIMER, $this->watch->dump());
-  }
+  
 }
 
 
@@ -243,17 +247,14 @@ class methods
 
     // TODO TARGET must be 'danbib'
     $search = &$TARGET["dfa"];
-
-
-    // print_r($adhlRequest);
-    //exit;
-
+   
     // prepare response-object
     $response = new adhlResponse();
     // set the search array and get ids from database
     $ids=$this->set_search($adhlRequest,$search);
 
-   
+    // print_r($adhlRequest);
+    //exit;
 
     // check for errors
     if( !$ids )
@@ -311,8 +312,6 @@ class methods
     if( $request->id->localid->lok )
       $search['bibkode']=$request->id->localid->lok;
 
-    $search['bibkode']=000200;
-
     $search["step"]=$request->numRecords;
     
     $ccl=$this->get_ccl_from_ids($ids); 
@@ -321,7 +320,7 @@ class methods
     Zsearch($search); 
 
     // print_r($search);
-    //exit;
+    //xit;
 
     return $ids;
   }
@@ -445,7 +444,7 @@ class methods
 	$where .= "l1.lokalid = :faust_bind";  
 	$where .= "\n";
 	// do NOT select same work
-	$where .= "and l2.lokalid != ':faust_bind'";
+	$where .= "and l2.lokalid != :faust_bind";
 	$where .="\n";
       }
     
@@ -523,49 +522,76 @@ where rownum<=:bind_numRecords';
   private function get_abm_dc(&$xml)
   {
 
-    // echo $xml;
-    //exit;
+    //   echo $xml;
+    // exit;
+
+    libxml_use_internal_errors(true);
 
     $dom = new DOMDocument('1.0', 'utf-8');
     $dom->LoadXML(utf8_encode($xml));
-
+   
     $xpath = new DOMXPath($dom);
-    
+   
+    /*
+    $xpath->registerNamespace("dkabm","http://biblstandard.dk/abm/namespace/dkabm/");
+    $xpath->registerNamespace("ac","http://purl.org/dc/elements/1.1/");
+    //$xpath->registerNamespace("dkdcplus","http://biblstandard.dk/abm/namespace/dkdcplus/");
+    //$xpath->registerNamespace("dcterms","http://purl.org/dc/terms/");
+    $xpath->registerNamespace("ac","http://biblstandard.dk/ac/namespace/");
+    */
+  
     $record = new record();    
        
     // identifier ( lid, lok )
     $query = "/dkabm:record/ac:identifier";
     $nodelist = $xpath->query($query);
-    foreach($nodelist as $node)
-      $record->recordId =  xml_func::UTF8($node->nodeValue);
+    if( $nodelist )
+      foreach($nodelist as $node)
+	$record->recordId =  xml_func::UTF8($node->nodeValue);
     // url to bib.dk
     $query = "/dkabm:record/ac:location";
     $nodelist = $xpath->query($query);
-    foreach( $nodelist as $node )
-      $record->url =  xml_func::UTF8($node->nodeValue);
+    if( $nodelist )
+      foreach( $nodelist as $node )
+	$record->url =  xml_func::UTF8($node->nodeValue);
     // creator
     $query = "/dkabm:record/dc:creator";
     $nodelist = $xpath->query($query);
-    foreach( $nodelist as $node )
-      $record->creator[] =  xml_func::UTF8($node->nodeValue);
+    if( $nodelist )
+      foreach( $nodelist as $node )
+	$record->creator[] =  xml_func::UTF8($node->nodeValue);
     // title
     $query = "/dkabm:record/dc:title";
     $nodelist = $xpath->query($query);
-    foreach( $nodelist as $node )
-      $record->title[] =  xml_func::UTF8($node->nodeValue);
+    if( $nodelist )
+      foreach( $nodelist as $node )
+	$record->title[] =  xml_func::UTF8($node->nodeValue);
     // description
     $query = "/dkabm:record/dc:description";
     $nodelist = $xpath->query($query);
-    foreach( $nodelist as $node )
-      $record->description[] =  xml_func::UTF8($node->nodeValue);
+    if( $nodelist )
+      foreach( $nodelist as $node )
+	$record->description[] =  xml_func::UTF8($node->nodeValue);
     // type
     $query = "/dkabm:record/dc:type";
     $nodelist = $xpath->query($query);
-    foreach( $nodelist as $node )
-      $record->type[] =  xml_func::UTF8($node->nodeValue);    
-    
-    return $record;     
-    
+    if( $nodelist )
+      foreach( $nodelist as $node )
+	$record->type[] =  xml_func::UTF8($node->nodeValue);    
+  
+    $errors = libxml_get_errors();
+    if( $errors )
+      {
+	foreach( $errors as $error )
+	  {
+	    $log_txt=" :get_abm_dc : ".trim($error->message);
+	    $log_txt.="\n xml: \n".$xml;
+	    adhl_server::$verbose->log(WARNING,$log_txt);
+	    libxml_clear_errors();
+	  }
+	return false;
+      }
+    return $record;         
   }
 }
 
