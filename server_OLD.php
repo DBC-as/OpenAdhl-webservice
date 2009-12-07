@@ -19,54 +19,212 @@
  * along with OpenLibrary.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+/** includes for setup and logging */
+require_once("ws_lib/inifile_class.php");
+require_once("ws_lib/verbose_class.php");
+require_once("ws_lib/timer_class.php");
+
 /** include for handling xml*/
-require_once("OLS_class_lib/xml_func_class.php");
+require_once("ws_lib/xml_func_class.php");
 
 /** include for database-access */
-require_once("OLS_class_lib/oci_class.php");
+require_once("ws_lib/oci_class.php");
 
 /** includes for zsearch */
 require_once("includes/search_func.phpi");
 require_once("includes/targets.php");
 
-/** include for webservice server */
-require_once("OLS_class_lib/webServiceServer_class.php");
+/** required for class-mapping*/
+require_once("ADHL_classes.php");
 
-
-class adhl_server extends webServiceServer
-{
-  public function ADHLRequest($params)
-  {
-    $defines=$this->config->get_section("database");
-    define(VIP_US,$defines['VIP_US']);
-    define(TABLE,$defines['TABLE']);
-    define(VIP_PW,$defines['VIP_PW']);
-    define(VIP_DB,$defines['VIP_DB']);
-    $methods=new methods();
-    $records=$methods->ADHLRequest($params);
-
-    foreach( $records as $record )
-      {
-	$response_xmlobj->adhlResponse->_namespace="http://oss.dbc.dk/ns/adhl";
-        $response_xmlobj->adhlResponse->_value->record[]=$record;
-      }
-
-    return $response_xmlobj;
-
-    /*print_r($params);
-    exit;
-    return "testhest";*/
-  }
-
-}
-
+// ready to go
+ini_set("soap.wsdl_cache_enabled", "0");
 // initialize server
 $server=new adhl_server("adhl.ini");
 
+// testing
+if( $_GET['soap'] )
+  {
+    $GLOBALS['HTTP_RAW_POST_DATA']='<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://oss.dbc.dk/ns/adhl"><SOAP-ENV:Body><ns1:adhlRequest><ns1:id><ns1:localId><ns1:lok>715700</ns1:lok><ns1:lid>27650341</ns1:lid></ns1:localId></ns1:id><ns1:numRecords>5</ns1:numRecords><ns1:sex/><ns1:age><ns1:maxAge>15</ns1:maxAge></ns1:age><ns1:dateInterval/><ns1:outputType>SOAP</ns1:outputType><ns1:callback/></ns1:adhlRequest></SOAP-ENV:Body></SOAP-ENV:Envelope>';
+  }
 
 // handle the request
 $server->handle_request();
 
+class adhl_server
+{
+  private $config;
+  private $timer;
+  public  static $verbose; // is this wise.. should verbose-object be static?
+
+  public function __construct($inifile)
+  {   
+
+    $this->config=new inifile($inifile);
+    
+    if( $this->config->error )
+      {
+	die("Cannot read " . $inifile." Error: ".$this->config->error );
+      }
+    
+    // initialize verbose-object for logging
+   
+    self::$verbose=new verbose($this->config->get_value("logfile", "setup"),
+			       $this->config->get_value("verbose", "setup")); 
+
+    // get section for db-access
+    $db = $this->config->get_section("database");
+    // set constants for database-access            
+    define(VIP_US,$db["VIP_US"]);
+    define(VIP_PW,$db["VIP_PW"]);
+    define(VIP_DB,$db["VIP_DB"]);
+    define(TABLE,$db["TABLE"]);
+
+    // start the timer    
+    $this->watch = new stopwatch("", " ", "", "%s:%01.3f");
+    $this->watch->start('OpenAdhl');
+  }
+
+  public function __destruct()
+  {
+    $this->watch->stop('OpenAdhl');
+    self::$verbose->log(TIMER, $this->watch->dump());
+  }
+
+  public function handle_request()
+  {
+    if( isset($_GET["HowRU"]) )
+      {
+	$this->HowRU();
+	return;
+      }
+    elseif( isset($GLOBALS['HTTP_RAW_POST_DATA']) )
+      { 	
+	$this->soap_request(); 
+	return;
+      }       
+    elseif( !empty($_SERVER['QUERY_STRING']) )
+      {
+        $response = $this->rest_request();
+	return;
+      }
+    else // no valid request was made; go to default client
+      {
+	Header( "HTTP/1.1 303 See Other" );
+	Header( "Location: example.php" ); 
+	exit;
+	//$this->send_error();
+	//return;
+      }    
+  }
+
+  /**
+   * Test function  
+   */
+  protected function HowRU()
+  {
+    $req=$this->config->get_section("HowRU");
+    $request=new adhlRequest();
+
+    $id->isbn=$req['isbn'];
+    if(  $idarray=helpFunc::get_lid_and_lok($req['isbn']) )
+      {
+	$request->id = new id();
+	$request->id->faust=$idarray['lid']; 
+	
+	$request->numRecords=$req['numRecords'];
+	$request->outputType=$req['outputType'];
+	
+	$met=new methods();
+	$response=$met->ADHLRequest($request);
+      }
+    else
+      {
+	$response = new adhlResponse();
+	$response->error="Could not look up(Zsearch) isbn: ".$req['isbn'];
+      }
+
+    if( $response->error )
+      die( "not so good ".$response->error );
+    else
+      die("gr8");    
+  }
+
+
+  protected function soap_request()
+  {    
+    global $classmap;
+   
+    $params = array("trace"=>true,                
+		    "classmap"=>$classmap);
+      try
+      {
+	$server = new SoapServer($this->config->get_value("wsdl","setup"),$params);
+
+	$server->setClass('methods');
+
+	$server->handle();  
+
+      }
+      catch( SoapFault $exception ){$this->verbose->log(FATAL,print_r($exception));};
+
+      
+  }
+
+  protected function rest_request($request=null)
+  {   
+    if( empty($request) )
+      $request = helpFunc::get_request();
+
+    // print_r($request);
+    //exit;
+
+    $met = new methods();
+    $response = $met->ADHLRequest($request);
+       
+    $this->handle_response($request,$response);    
+  }
+
+  protected function handle_response($request,$response)
+  {
+    $type = "type";
+    if( !empty($request->outputType) )
+      $type=strtolower($request->outputType);
+    
+    switch($type)
+      {
+      case "json":
+	if( !empty($request->callback) )
+	  echo $request->callback." && ".$request->callback."(".json_encode($response).")";
+	else
+	  echo json_encode($response);
+	break;
+      case "xml":
+		header('Content-Type:text/xml;charset=UTF-8');
+	echo xml_func::object_to_xml($response);
+	//print_r($response);
+	break;
+      default:
+	$message="Please pass a valid outputType (XML or JSON)";
+	$this->send_error($message);
+	break;
+      }     
+  }
+
+  protected function send_error($message=null)
+  {
+    if( empty($message) )
+      $message = xml_func::UTF8("Please give me something to look for like ?isbn=87-986036-2-0&outputType=XML");
+
+    $response=new adhlResponse();
+    $response->error=$message;
+    
+    header('Content-Type:text/xml;charset=UTF-8');
+    echo xml_func::object_to_xml($response);
+    
+  }
+  
+}
 
 
 /** \brief class for handling request*/
@@ -81,9 +239,9 @@ class methods
    * @params $adhlRequest; the request given from soapclient or derived from url-query
    * @return $adhlResponse; response to given request
   */
-  public function ADHLRequest($params)
+  public function ADHLRequest($adhlRequest)
   {
-    // prepare zsearch
+     // prepare zsearch
     global $TARGET;// from include file : targets.php
     global $search;// array holds parameters and result for Zsearch
 
@@ -91,9 +249,9 @@ class methods
     $search = &$TARGET["dfa"];
    
     // prepare response-object
-    //  $response = new adhlResponse();
+    $response = new adhlResponse();
     // set the search array and get ids from database
-    $ids=$this->set_search($params,$search);
+    $ids=$this->set_search($adhlRequest,$search);
 
     // print_r($adhlRequest);
     //exit;
@@ -114,23 +272,23 @@ class methods
       }
 
     // get result as array
-    $dcarray=array();   
+    $dcarray=array();
+
+   
 
     if( is_array($search["records"]) )
       foreach( $search["records"] as $rec )
 	  $dcarray[]=$this->get_abm_dc($rec["record"]);
        
-
-    //return $dcarray;
     //print_r($dcarray);
     //exit;
   
     // sort the result
-    return $this->sort_array($ids, $dcarray );      
+    $response->record = $this->sort_array($ids, $dcarray );      
    
     //  $response->error= $this->sql;
 
-    // return $response;	       
+    return $response;	       
   }
 
   /** \brief
@@ -139,25 +297,22 @@ class methods
    *  @param $search; the array to be set for Zsearch, given array is handled as reference
    *  @returns $ids; an array of localid's 
   */
-  public function set_search($params, array &$search)
+  public function set_search($request, array &$search)
   {  
     $search["format"] = "abm";
     $search["start"]=1;    
     
-    $ids = $this->get_ids($params);   
+    $ids = $this->get_ids($request);   
 
     if( empty($ids) )
       {
 	return false;
       }
 
-    if( $test=$params->id->_value->lok->_value )
-      $search['bibkode']=$test;
+    if( $request->id->localid->lok )
+      $search['bibkode']=$request->id->localid->lok;
 
-    if( $step=$params->numRecords->_value )
-      $search["step"]=$step;
-    else
-      $search["step"]=5;
+    $search["step"]=$request->numRecords;
     
     $ccl=$this->get_ccl_from_ids($ids); 
     $search["ccl"]=$ccl;
@@ -174,14 +329,18 @@ class methods
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
    */
-  private function get_ids( $params)
-  {   
+  private function get_ids( $request)
+  {
+
     $db = new db();
     // pass db-object to set bind-variables
-    if(! $sql=$this->get_sql($params,$db) )
+    if(! $sql=$this->get_sql($request,$db) )
       {
 	return false;    
       }	
+   
+    //  echo $sql;
+    //exit;
 
     $db->query($sql);
     while( $row = $db->get_row() )
@@ -211,7 +370,7 @@ class methods
 	  $key = $id['lid'].'|'.$id['lok'];
 
 	foreach( $records as $record )
-	  if( $record->_value->recordId->_value == $key )
+	  if( $record->recordId == $key )
 	    {
 	      $ret[]=$record;
 	      break;
@@ -245,29 +404,27 @@ class methods
    *  @param $adhlRequest; current request
    *  @return $sql; sql formatted from given request
    */
-  private function get_sql( $params, db $db)
+  private function get_sql( $request, db $db)
   {
     // set clauses
     $where = "\nand ";     
    
     // if isbn is set - set localid and location via z-search
-    // if( $request->id->isbn )
-    if( $isbn=$params->id->_value->isbn->_value )
+     if( $request->id->isbn )
       {	
-	if( $idarr = helpFunc::get_lid_and_lok($isbn) )
+	if( $idarr = helpFunc::get_lid_and_lok($request->id->isbn) )
 	  {
-	    $params->id->_value->faust->_value=$idarr['lid'];	    
+	    $request->id->faust=$idarr['lid'];	    
 	  }
 	else
 	  return false;
       }
 
-    // if( $request->id->localId->lid && $request->id->localId->lok)
-    if( $lid=$params->id->_value->lid->_value && $lok=$params->id->_value->lok->_value )
+    if( $request->id->localId->lid && $request->id->localId->lok)
       {
 	// bind variablese lok and lid
-	$db->bind("bind_lok",$lok,SQLT_INT);
-	$db->bind("bind_lid",$lid);
+	$db->bind("bind_lok",$request->id->localId->lok,SQLT_INT);
+	$db->bind("bind_lid",$request->id->localId->lid);
 
      	$where .="l1.lokalid = :bind_lid";
 	$where .="\n";
@@ -278,11 +435,10 @@ class methods
 	$where .="\n";
       } 
 
-      //elseif( $request->id->faust )
-      elseif( $faust=$params->id->_value->faust->_value )
+    elseif( $request->id->faust )
       {
 	// bind variable faust
-	$db->bind("faust_bind",$faust);
+	$db->bind("faust_bind",$request->id->faust);
 	// this is the easy part. libraries always use faust-number as localid
 
 	$where .= "l1.lokalid = :faust_bind";  
@@ -299,54 +455,43 @@ class methods
       }   
     
      // filter by sex
-      // if( $request->sex )
-      if( $sex=$params->sex->_value )
+    if( $request->sex )
       {
 	// bind sex-variable
-	$db->bind("sex_bind",$sex);
+	$db->bind("sex_bind",$request->sex);
 	$where .= "and l2.koen= :sex_bind\n";
       }
     // filter by minimum age
-      // if( $request->age->minAge )
-      if( $minAge=$params->age->_value->minAge )
+    if( $request->age->minAge )
       {
 	// bind minAge-variable
-	$db->bind("minAge_bind",$minAge);
+	$db->bind("minAge_bind",$request->age->minAge);
 	$where .= "and l2.foedt <= sysdate- :minAge_bind *365\n";
       }
     // filter by maximum age
-      // if( $request->age->maxAge )
-      if( $maxAge=$params->age->_value->maxAge->_value)
+    if( $request->age->maxAge )
       {
 	// bind maxAge-variable
 	$db->bind("maxAge_bind",$request->age->maxAge);	
 	$where .= "and l2.foedt >= sysdate- :maxAge_bind *365\n";
       }
     // filter by minimum date
-    //if( $request->dateInterval->from )
-      if( $from=$params->dateInterval->_value->from->_value )
+    if( $request->dateInterval->from )
       {
 	// bind from-variable
-	$db->bind("bind_from",$from );
+	$db->bind("bind_from",$request->dateInterval->from );
 	$where .= "and l2.dato > to_date(:bind_from,'YYYYMMDD')\n";
       }
     // filter by maximum date
-      // if( $request->dateInterval->to )
-      if( $to=$params->dateInterval->_value->to->_value)
+    if( $request->dateInterval->to )
       {
 	//bind to-variable
-	$db->bind("bind_to",$to);
+	$db->bind("bind_to",$request->dateInterval->to);
 	$where .= "and l2.dato < to_date(:bind_to,'YYYYMMDD')\n";    
       }
 
     // finally bind numRecords-variable
-      //  $db->bind("bind_numRecords",$request->numRecords,SQLT_INT);
-      if( $numRecords=$params->numRecords->_value )
-	;
-      else
-	$numRecords=5;
-
-      $db->bind("bind_numRecords",$numRecords,SQLT_INT);
+    $db->bind("bind_numRecords",$request->numRecords,SQLT_INT);
     
     //set query    
     $query =
@@ -376,89 +521,71 @@ where rownum<=:bind_numRecords';
    */
   private function get_abm_dc(&$xml)
   {
+
+    //   echo $xml;
+    // exit;
+
     libxml_use_internal_errors(true);
 
     $dom = new DOMDocument('1.0', 'utf-8');
     $dom->LoadXML(utf8_encode($xml));
    
     $xpath = new DOMXPath($dom);
+   
+    /*
+    $xpath->registerNamespace("dkabm","http://biblstandard.dk/abm/namespace/dkabm/");
+    $xpath->registerNamespace("ac","http://purl.org/dc/elements/1.1/");
+    //$xpath->registerNamespace("dkdcplus","http://biblstandard.dk/abm/namespace/dkdcplus/");
+    //$xpath->registerNamespace("dcterms","http://purl.org/dc/terms/");
+    $xpath->registerNamespace("ac","http://biblstandard.dk/ac/namespace/");
+    */
+  
+    $record = new record();    
        
-    $record->_namespace="http://oss.dbc.dk/ns/adhl";
     // identifier ( lid, lok )
     $query = "/dkabm:record/ac:identifier";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach($nodelist as $node)
-	{
-	  $record->_value->recordId->_value=xml_func::UTF8($node->nodeValue);
-	  $record->_value->recordId->_namespace="http://oss.dbc.dk/ns/adhl";
-	  //	$record->recordId =  xml_func::UTF8($node->nodeValue);
-	}	
+	$record->recordId =  xml_func::UTF8($node->nodeValue);
     // url to bib.dk
     $query = "/dkabm:record/ac:location";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach( $nodelist as $node )
-	{
-	  $record->_value->url->_value=xml_func::UTF8($node->nodeValue);
-	  $record->_value->url->_namespace="http://oss.dbc.dk/ns/adhl";
-	}
+	$record->url =  xml_func::UTF8($node->nodeValue);
     // creator
     $query = "/dkabm:record/dc:creator";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach( $nodelist as $node )
-	{
-	  $creator->_value=xml_func::UTF8($node->nodeValue);
-	  $creator->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->creator[]=$creator;
-	}
+	$record->creator[] =  xml_func::UTF8($node->nodeValue);
     // title
     $query = "/dkabm:record/dc:title";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach( $nodelist as $node )
-	{
-	  $title->_value=xml_func::UTF8($node->nodeValue);
-	  $title->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->title[]=$title;
-	  
-	  // $record->title[] =  xml_func::UTF8($node->nodeValue);
-	}
+	$record->title[] =  xml_func::UTF8($node->nodeValue);
     // description
     $query = "/dkabm:record/dc:description";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach( $nodelist as $node )
-	{
-	  $description->_value=xml_func::UTF8($node->nodeValue);
-	  $description->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->description[]=$description;
-
-	  //  $record->description[] =  xml_func::UTF8($node->nodeValue);
-	}
-    
+	$record->description[] =  xml_func::UTF8($node->nodeValue);
     // type
     $query = "/dkabm:record/dc:type";
     $nodelist = $xpath->query($query);
     if( $nodelist )
       foreach( $nodelist as $node )
-	{
-	  $type->_value=xml_func::UTF8($node->nodeValue);
-	  $type->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->type[]=$type;
-	  
-	  // $record->type[] =  xml_func::UTF8($node->nodeValue);    
-	}
-    
+	$record->type[] =  xml_func::UTF8($node->nodeValue);    
+  
     $errors = libxml_get_errors();
     if( $errors )
       {
 	foreach( $errors as $error )
 	  {
 	    $log_txt=" :get_abm_dc : ".trim($error->message);
-	    // $log_txt.="\n xml: \n".$xml;
-	    // TODO alternative way of logging
+	    $log_txt.="\n xml: \n".$xml;
 	    adhl_server::$verbose->log(WARNING,$log_txt);
 	    libxml_clear_errors();
 	  }
@@ -521,7 +648,7 @@ class db
 class helpFunc
 {
 /** make an adhlRequest-object from url-parameters*/
-  /*public static function get_request()
+ public static function get_request()
   {
 
     $request = new adhlRequest();
@@ -597,8 +724,7 @@ class helpFunc
     return $request;
 
   }
-  */
-
+  
  /** \brief  lookup localid and location from given isbn via Zsearch 
   *   @param $isbn; the isbn-number to look for
   *   @returns $idarray; an array with ONE element (lid,lok)
@@ -678,7 +804,5 @@ function load_lang_tab()
 {
   // TODO do error-logging
 }
-
-
 
 ?>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <wsdl:definitions name="adhlDefinition"
-  targetNamespace="http://adhl.dk/definitions"
-  xmlns:types="http://adhl.dk/schemas"
+  targetNamespace="http://oss.dbc.dk/ns/adhl"
+  xmlns:types="http://oss.dbc.dk/ns/adhl"
   xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
   xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
 <wsdl:documentation>This file is part of OpenSearch.
@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License along w
 
  <wsdl:types>
     <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-      <xs:import namespace="http://adhl.dk/schemas" 
+      <xs:import namespace="http://oss.dbc.dk/ns/adhl" 
                   schemaLocation="adhl.xsd"/>
     </xs:schema>
   </wsdl:types>
