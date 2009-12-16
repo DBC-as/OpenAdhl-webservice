@@ -40,12 +40,12 @@ xmldir = ./xml
 
 ;settings for database access
 [database]
-;VIP_US=pjo/pjo@tora1.dbc.dk
+;VIP_US=mycredentials
 ;VIP_PW=
 ;VIP_DB=
 ;TABLE=temp
 
-VIP_US=vip_kig/gakpiv@dora1.dbc.dk
+VIP_US=mycredentials
 VIP_PW=
 VIP_DB=
 ;TABLE=temp
