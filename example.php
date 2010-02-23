@@ -19,12 +19,10 @@
  * along with OpenLibrary.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/** include for class-mapping  */
-require_once("ADHL_classes.php");
 /** include for remote calls*/
-require_once("ws_lib/curl_class.php");
+require_once("OLS_class_lib/curl_class.php");
 /** include for setup */
-require_once("ws_lib/inifile_class.php");
+require_once("OLS_class_lib/inifile_class.php");
 
 //header("Content-Type: text/html; charset=utf-8");
 
@@ -43,15 +41,15 @@ define(BASEURL,$config->get_value("baseurl","setup"));
 if( $_POST['outputType'] )
   $type=$_POST['outputType'];
 else
-  $type="SOAP";
+  $type="XML";
 
-switch($type)
+/*switch($type)
   {
   case "JSON":
     XML_and_JSON();
     exit;
   case "XML":
-    header("Content-Type:text/xml;charset=UTF-8");
+    //  header("Content-Type:text/xml;charset=UTF-8");
     XML_and_JSON();
     exit;
   case "SOAP":
@@ -60,70 +58,103 @@ switch($type)
   default:
     echo "Something went wrong";
     break;
-  }
+    }*/
+XML_and_JSON();
 
 function XML_and_JSON()
 {
- if( !$request = get_request() )
+  //	echo get_head();  
+   if( !$request = get_request() )
       {
-	echo get_head();  
+	echo get_head(); 
 	echo get_form();
 	exit;
       }
 
-    $url = get_request_url($request);
-    $curl=new curl();    
-    $curl->set_url($url);
+   if( !isset($_POST["submit"]) )
+     {
+       	echo get_head(); 
+       echo get_form();
+       exit;
+     }
+   
+ header("Content-Type:text/xml;charset=UTF-8");
+   // print_r($request);
+   //exit;
+   $url=get_request_url($request);
+
+ 
+   $curl=new curl();
+   $curl->set_url($url);
+   $xml=$curl->get();
   
-    echo $curl->get();
+   // echo $xml;
+   //exit;
+
+   $response=parse_response($xml);
+
+   //  echo "<div class='container'>";
+ 
+   // echo get_form($request);
+   //  echo get_results($response);
+   echo $xml;
+
+   // echo "</div>\n";
+   //   echo $url;
+ 
 }
 
 
 function SOAPRequest()
 {
-
-  $wsdlpath=WSDL;
-  $param = array(    
+  /*$param = array(    
 		 //"classmap"=>$classmap,
      "trace" =>true            
-	 );         
-  echo get_head();  
+     );         */
+  //  echo get_head();  
 
-  if( !isset($_POST["submit"]) )
+  /*  if( !isset($_POST["submit"]) )
     {
       echo get_form();
       exit;
-    }
+      }*/
 
-
+   
   if( !$request = get_request() )
     exit;  
 
+   print_r($request);
+  //exit;
+
   try{
     // TODO once php-version is updated; give $param as input to soap-client for proper class-mapping
-    $client = new SoapClient($wsdlpath,$param);
-    
-    $response=$client->ADHLRequest($request);   
+    $client = new SoapClient(WSDL);
+    $response=$client->ADHLRequest($request); 
   }
   catch(SoapFault $exception)
     {
+      echo "TUTUTUTUT";
       // show some kind of error
       var_dump($exception);
       exit;
     }
-
-  
-
-  //echo $client->__getLastResponse();
-  //  echo $client->__getLastRequest();
-
-
-  echo "<div class='container'>";
  
-  echo get_form($request);
+  //  print_r($response);
+  //exit;
+  //echo $client->__getLastResponse();
+  $soap = $client->__getLastRequest();
+  echo $client->__getLastRequest();
+  //  echo $soap;
+  return $soap;
+  exit;
+
+
+  // echo "<div class='container'>";
+ 
+  //echo get_form($request);
   echo get_results($response);
   
-  echo "</div>\n";
+  //echo "</div>\n";
 
  
   //  var_dump($response);
@@ -182,15 +213,20 @@ div.record h2
 /** /brief
  * set and return an url with parameters set from given adhlRequest
 */
-function get_request_url(adhlRequest $request)
+function get_request_url($request)
 {
-  $params = "?";
+
+  $params = "?action=ADHLRequest&";
   // lok and lid
-  if( $request->id->localId->lok && $request->id->localId->lid )
+  /* if( $request->id->localId->lok && $request->id->localId->lid )
     {
       $params.="lok=".$request->id->localId->lok;
       $params.="&lid=".$request->id->localId->lid;
-    }
+      }*/
+  if(  $request->id->faust )
+    $params.="faust=".$request->id->faust;
+  elseif( $isbn=$request->id->isbn )
+    $params.="isbn=".$isbn;
   else
     return "";
 
@@ -217,12 +253,50 @@ function get_request_url(adhlRequest $request)
     $params.="&sex=".$request->sex;
   // outputType
   if( $request->outputType )
-    $params.="&outputType=".$request->outputType;
+    $params.="&outputType=".strtolower($request->outputType);
 
   return BASEURL.$params;
   
 }
 
+
+function parse_response($xml)
+{
+  $dom=new DOMDocument();
+  $dom->LOADXml($xml);
+  $xpath=new DOMXPath($dom);
+  
+  $query="//*[local-name()='record']";
+  $nodes=$xpath->query($query);
+  foreach( $nodes as $node )
+    {
+      //url
+      $res=$node->getElementsByTagName("url");
+      $rec->url=$res->item(0)->nodeValue;
+      
+      //title
+      $res=$node->getElementsByTagName("title");
+      $rec->title=$res->item(0)->nodeValue;
+
+      //forfatter
+      $res=$node->getElementsByTagName("creator");
+      foreach( $res as $nod )
+	$creator[]=$nod->nodeValue;
+      $rec->creator=$creator;
+
+      //description
+      $res=$node->getElementsByTagName("description");
+      foreach( $res as $nod )
+	$description[]=$nod->nodeValue;
+      $rec->description=$description;
+
+      $response->record[]=$rec;
+
+      $rec=null;
+    }
+  
+  return $response;
+}
 /** /brief
  * return records holding html-formatted posts (one post for each record in response)
 */
@@ -302,7 +376,7 @@ function is_url($url)
 */
 function get_request()
 {
-  $request = new adhlRequest();
+  //  $request = new adhlRequest();
 
   // number of records
   if( !empty($_POST["numRecords"]) )
@@ -311,16 +385,18 @@ function get_request()
     $request->numRecords = 5;
 
   // lok ( library code ) and lid ( local id )
-  if( !empty($_POST["lok"]) && !empty($_POST["lid"]) )
+  /* if( !empty($_POST["lok"]) && !empty($_POST["lid"]) )
     {
-      $localid = new localId();
+      // $localid = new localId();
       $localid->lok = $_POST["lok"];//714700;
       $localid->lid = $_POST["lid"];//"00122181";
-      $request->id = new id();
+      // $request->id = new id();
       $request->id->localId=$localid;
-    }
+      }*/
+  if( !empty($_POST["faust"]) )
+    $request->id->faust=$_POST["faust"];
   // isbn
-  else if( !empty($_POST["isbn"]) )
+  elseif( !empty($_POST["isbn"]) )
     {
       //$request->id=new id();
       $request->id->isbn=$_POST["isbn"];        
@@ -334,7 +410,7 @@ function get_request()
   // date interval; either from- or to-date can be set
   if( !empty($_POST["from"]) || !empty($_POST["to"]) )
     {
-      $date=new dateInterval();
+      //   $date=new dateInterval();
       if( !empty($_POST["from"]) )
 	$date->from=$_POST["from"];//'04-SEP-07';
       if( !empty($_POST["to"]) )
@@ -352,7 +428,7 @@ function get_request()
   // age interval; either min- or max-age can be set
   if( !empty($_POST["minage"]) || !empty($_POST["maxage"])  )
     {
-      $age=new age();
+      // $age=new age();
       if( !empty($_POST["minage"]) )
 	$age->minAge=$_POST["minage"];//10;
       if( !empty($_POST["maxage"]) )
@@ -364,6 +440,8 @@ function get_request()
   // outputType - can be set or not
   if( !empty($_POST["outputType"]) )
       $request->outputType = $_POST["outputType"];
+
+  $request->outputType="xml";
   
   return $request;
 }
@@ -379,9 +457,9 @@ function get_form($request=null)
 <div class="post">
 <p>  Antal poster: </p>
 <input type="text" name="numRecords" value="'.(( $request->numRecords )?$request->numRecords:'').'"/> 
-</div>
+</div>';
 
-<div class="post">
+  /*<div class="post">
 <p>Type</p>
 <select name="outputType">
 <option value="SOAP"';
@@ -398,18 +476,18 @@ $ret.='>XML</option>';
 
 $ret.='</select>';
 
+$ret.='</div>*/
 $ret.='
-</div>
-
 <div class="break"></div>
 
 <div class="post">
-<p>  Bibliotekskode: </p>
-<input type="text" name="lok" value="'.(( $request->id->localId->lok )?$request->id->localId->lok:'715700').'"/>
+<p> Faust :</p>
+<input type="text" name="faust" value="'.(( $request->id->faust )?$request->id->faust:'').'"/>
 </div>
+
 <div class="post">
-<p> Lokalid :</p>
-<input type="text" name="lid" value="'.(( $request->id->localId->lid )?$request->id->localId->lid:'27650341').'"/>
+<p> ISBN :</p>
+<input type="text" name="isbn" value="'.(( $request->id->isbn )?$request->id->isbn:'').'"/>
 </div>
 
 <div class="break"></div>

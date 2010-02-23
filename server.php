@@ -32,9 +32,20 @@ require_once("includes/targets.php");
 /** include for webservice server */
 require_once("OLS_class_lib/webServiceServer_class.php");
 
+/** include for database-access */
+require_once("OLS_class_lib/oci_class.php");
+
+/** include for caching */
+require_once("OLS_class_lib/cache_client_class.php");
+
 
 class adhl_server extends webServiceServer
-{
+{  
+  public function __construct($inifile)
+  {
+    parent::__construct($inifile);
+  }
+  
   public function ADHLRequest($params)
   {
     $defines=$this->config->get_section("database");
@@ -42,117 +53,97 @@ class adhl_server extends webServiceServer
     define(TABLE,$defines['TABLE']);
     define(VIP_PW,$defines['VIP_PW']);
     define(VIP_DB,$defines['VIP_DB']);
-    $methods=new methods();
-    $records=$methods->ADHLRequest($params);
+  
+    $records=$this->records($params);
 
+    // prepare response-object
+    $response_xmlobj->adhlResponse->_namespace="http://oss.dbc.dk/ns/adhl";
     foreach( $records as $record )
-      {
-	$response_xmlobj->adhlResponse->_namespace="http://oss.dbc.dk/ns/adhl";
-        $response_xmlobj->adhlResponse->_value->record[]=$record;
-      }
+      $response_xmlobj->adhlResponse->_value->record[]=$record;
 
     return $response_xmlobj;
-
-    /*print_r($params);
-    exit;
-    return "testhest";*/
   }
 
+ 
+  /** \brief Echos config-settings
+   *
+   */
+  public function show_info() 
+  {
+    echo "<pre>";
+    echo "version             " . $this->config->get_value("version", "setup") . "<br/>";
+    echo "log                 " . $this->config->get_value("logfile", "setup") . "<br/>";
+    echo "</pre>";
+    die();
+  }
+  
+
+  private function records($params)
+  {
+    $methods=new methods();
+    $records=$methods->ADHLRequest($params,$this->verbose);
+
+    return $records;
+  }
 }
 
 // initialize server
 $server=new adhl_server("adhl.ini");
 
-
 // handle the request
 $server->handle_request();
-
-
 
 /** \brief class for handling request*/
 class methods
 {
   /** \brief member holds sql */
   private $sql;
+
   
   private $test;
 
   /** \brief The function handling the request
-   * @params $adhlRequest; the request given from soapclient or derived from url-query
-   * @return $adhlResponse; response to given request
+   * @params $params; the request given from soapclient or derived from url-query
+   * @return array with response in abm_xml format
   */
-  public function ADHLRequest($params)
+  public function ADHLRequest($params,$verbose)
   {
-    // prepare zsearch
-    global $TARGET;// from include file : targets.php
-    global $search;// array holds parameters and result for Zsearch
-
-    // TODO TARGET must be 'danbib'
-    $search = &$TARGET["dfa"];
+    
+    $ids = $this->get_ids($params,$verbose);
    
-    // prepare response-object
-    //  $response = new adhlResponse();
-    // set the search array and get ids from database
-    $ids=$this->set_search($params,$search);
-
-    // print_r($adhlRequest);
-    //exit;
-
-    // check for errors
-    if( !$ids )
-      {
-	$response->error = " No results found ";
-	//	$response->error=$this->sql;
-	return $response;
-      }
-
-     if( $search["error"] )
-      {
-	// TODO log
-	$response->error=$search["error"];
-	return $response;
-      }
-
+    if( !$ids ) // empty result-set
+      return array();
+	
     // get result as array
-    $dcarray=array();   
+    if(! $dcarray=$this->set_search($ids,$params,$error) ) 
+      {
+	$verbose->log(FATAL,"zsearch-error: ".$error);
+	header("HTTP/1.0 500 Internal server error");
+      }
 
     if( is_array($search["records"]) )
       foreach( $search["records"] as $rec )
 	  $dcarray[]=$this->get_abm_dc($rec["record"]);
-       
-
-    //return $dcarray;
-    //print_r($dcarray);
-    //exit;
-  
-    // sort the result
-    return $this->sort_array($ids, $dcarray );      
-   
-    //  $response->error= $this->sql;
-
-    // return $response;	       
+ 
+    return $this->sort_array($ids, $dcarray );    
   }
 
   /** \brief
-   *  Function sets searcharray for Zsearch and returns ids for sorting the results
-   *  @param $request; the current request
-   *  @param $search; the array to be set for Zsearch, given array is handled as reference
-   *  @returns $ids; an array of localid's 
+  
   */
-  public function set_search($params, array &$search)
-  {  
-    $search["format"] = "abm";
-    $search["start"]=1;    
+  private function set_search($ids,$params,&$error)
+  {
+    global $TARGET;// from include file : targets.php
+    global $search;  
     
-    $ids = $this->get_ids($params);   
-
-    if( empty($ids) )
-      {
-	return false;
-      }
-
-    if( $test=$params->id->_value->lok->_value )
-      $search['bibkode']=$test;
+    // TODO TARGET should be danbib
+    //$search = &$TARGET["dfa"];
+    $search = &$TARGET["danbib"];
+    $search["format"] = "abm";
+    $search["start"]=1;
+      
+    if( $bibcode=$params->id->_value->lok->_value )
+      $search['bibkode']=$bibcode;
 
     if( $step=$params->numRecords->_value )
       $search["step"]=$step;
@@ -160,30 +151,43 @@ class methods
       $search["step"]=5;
     
     $ccl=$this->get_ccl_from_ids($ids); 
+    
     $search["ccl"]=$ccl;
+
     // do the actual z3950 search to get results in searcharray
     Zsearch($search); 
+    
+    if( $search["error"] )
+      return false;
+    
 
-    // print_r($search);
-    //xit;
+    $dcarray=array();
+     if( is_array($search["records"]) )
+      foreach( $search["records"] as $rec )
+	  $dcarray[]=$this->get_abm_dc($rec["record"]);
 
-    return $ids;
+    //print_r($search);
+    //exit;
+
+    return $dcarray;
   }
   
   /** \brief Function gets result from database 
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
    */
-  private function get_ids( $params)
+  private function get_ids($params,$verbose)
   {   
     $db = new db();
     // pass db-object to set bind-variables
     if(! $sql=$this->get_sql($params,$db) )
-      {
 	return false;    
-      }	
 
     $db->query($sql);
+    
+    if( $error=$db->get_error() )
+	$verbose->log(FATAL," OCI error: ".$error);
+
     while( $row = $db->get_row() )
       {	
 	$res['lid']=$row["LID"];
@@ -293,10 +297,8 @@ class methods
       }
     
     else // id was not set or wrong; 
-      {
-	$this->sql = "ID was not set or wrong";
-	return false;
-      }   
+      return false;
+
     
      // filter by sex
       // if( $request->sex )
@@ -349,7 +351,7 @@ class methods
       $db->bind("bind_numRecords",$numRecords,SQLT_INT);
     
     //set query    
-    $query =
+      /*          $query =
 'select lid from
 (select distinct l2.lokalid lid, t.count
 from '.TABLE.' l1 inner join '.TABLE.' l2
@@ -361,11 +363,20 @@ on l2.klynge = t.klynge
 and t.count > 3
 order by t.count desc
 )
+where rownum<=:bind_numRecords';*/
+
+      $query =
+'select lid from
+(select distinct l2.lokalid lid, l2.laan_i_klynge count
+from '.TABLE.' l1 inner join '.TABLE.' l2
+on l2.laanerid = l1.laanerid'
+.$where.
+'and l1.laan_i_klynge>3 and l2.laan_i_klynge>2 order by count desc
+)
 where rownum<=:bind_numRecords';
 
-
-    $this->sql=$query;
-
+// echo $query;
+//   exit;
     return $query;
   }
  
@@ -376,6 +387,7 @@ where rownum<=:bind_numRecords';
    */
   private function get_abm_dc(&$xml)
   {
+  
     libxml_use_internal_errors(true);
 
     $dom = new DOMDocument('1.0', 'utf-8');
@@ -459,7 +471,9 @@ where rownum<=:bind_numRecords';
 	    $log_txt=" :get_abm_dc : ".trim($error->message);
 	    // $log_txt.="\n xml: \n".$xml;
 	    // TODO alternative way of logging
-	    adhl_server::$verbose->log(WARNING,$log_txt);
+	    // adhl_server::$verbose->log(WARNING,$log_txt);
+	    echo $log_txt;
+	    exit;
 	    libxml_clear_errors();
 	  }
 	return false;
@@ -509,7 +523,7 @@ class db
   /** get error from oci-class */ 
   function get_error()
   {
-    return $this->oci->get_error();
+    return $this->oci->get_error_string();
   }
 }
 
@@ -519,87 +533,22 @@ class db
  *  other functions are private
 */
 class helpFunc
-{
-/** make an adhlRequest-object from url-parameters*/
-  /*public static function get_request()
+{  
+  public static function cache_key($params,&$cachekey)
   {
-
-    $request = new adhlRequest();
-    // lok and lid
-    if( $_GET['lok'] && $_GET['lid'] )
+    foreach( $params as $obj=>$var )
       {
-	$localid = new localId();
-	$localid->lok =$_GET['lok'];
-	$localid->lid =$_GET['lid'];
-	$request->id = new id();
-	$request->id->localId=$localid;      
+	if( is_object($var->_value) )
+	  self::cache_key($var->_value,$cachekey);
+	elseif( is_scalar($var->_value) )
+	  {
+	    //echo $obj.":".$var->_value."\n";
+	    $cachekey.= $obj.":".$var->_value."\n";
+	  }
       }
-    
-    else if( $_GET['faust'] )
-      {
-	$request->id = new id();
-	$request->id->faust=$_GET['faust'];  	
-      }
-    else if( $_GET['isbn'] )
-      {
-	if( ! $idarray=self::get_lid_and_lok($_GET['isbn']) )
-	    return false;
-	
-	//	print_r($idarray);
-	$request->id = new id();
-	$request->id->faust=$idarray['lid']; 
-      }
-    
-    // outputType
-    if( $_GET['outputType'] )
-      $request->outputType = $_GET['outputType'];
-    else
-      $request->outputType = "JSON";
-
-    //callback
-    if( $_GET['callback'] )
-      $request->callback=$_GET['callback'];
-
-    // age-interval
-    if( $_GET['minAge'] || $_GET['maxAge'] )
-      {
-	$age =new age();
-	if( $_GET['minAge'] )
-	  $age->minAge=$_GET['minAge'];
-	if( $_GET['maxAge'] )
-	  $age->maxAge=$_GET['maxAge'];
-	
-	$request->age=$age;
-      }
-    // date-interval
-    if( $_GET['from'] || $_GET['to'] )
-      {
-	$date=new dateInterval();
-	if( $_GET['from'] )
-	  $date->from=$_GET['from'];
-	if( $_GET['to'] )
-	  $date->to=$_GET['to'];
-	
-	$request->dateInterval=$date;
-      }
-    // sex
-    if( $_GET['sex'] )
-      {
-	$request->sex=$_GET['sex'];      
-      }  
-     
-    //number of records
-    if( $_GET['numRecords'] )
-      $request->numRecords = $_GET['numRecords'];
-    else
-      $request->numRecords=5;
-       
-    return $request;
-
+    //   return $cachekey;
   }
-  */
-
- /** \brief  lookup localid and location from given isbn via Zsearch 
+  /** \brief  lookup localid and location from given isbn via Zsearch 
   *   @param $isbn; the isbn-number to look for
   *   @returns $idarray; an array with ONE element (lid,lok)
   */
@@ -609,7 +558,8 @@ class helpFunc
     global $search;  
     
     // TODO TARGET should be danbib
-    $search = &$TARGET["dfa"];
+    // $search = &$TARGET["dfa"];
+    $search = &$TARGET["danbib"];
     $search["format"] = "abm";
     $search["start"]=1;
  
@@ -646,6 +596,9 @@ class helpFunc
     $xpath = new DOMXPath($dom);
     $query = "/dkabm:record/ac:identifier";
     
+    //   echo $xml;
+    //exit;
+
     $nodelist = $xpath->query($query);
     
     if( $nodelist->length < 1 )
