@@ -1,6 +1,6 @@
 <?php
 define("DANBIB_NEP","saba.dbc.dk:21040");
-define("DEFAULT_HOST", "lakito.dbc.dk:2105");
+define("DEFAULT_HOST", "lakitre.dbc.dk:2105");
 //define("DANBIB_NEP", "lakitre.dbc.dk:21040");
 
 //global $TARGET;	// aht wget

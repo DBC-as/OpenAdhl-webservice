@@ -36,7 +36,7 @@ require_once("OLS_class_lib/webServiceServer_class.php");
 require_once("OLS_class_lib/oci_class.php");
 
 /** include for caching */
-require_once("OLS_class_lib/cache_client_class.php");
+//require_once("OLS_class_lib/cache_client_class.php");
 
 
 class adhl_server extends webServiceServer
@@ -44,6 +44,7 @@ class adhl_server extends webServiceServer
   public function __construct($inifile)
   {
     parent::__construct($inifile);
+    $this->watch->start("openadhl");
   }
   
   public function ADHLRequest($params)
@@ -58,6 +59,9 @@ class adhl_server extends webServiceServer
 
     // prepare response-object
     $response_xmlobj->adhlResponse->_namespace="http://oss.dbc.dk/ns/adhl";
+
+//    $response_xmlobj->adhlResponse->_value->pure_sql->_value=methods::$pure_sql;
+    
     foreach( $records as $record )
       $response_xmlobj->adhlResponse->_value->record[]=$record;
 
@@ -81,10 +85,17 @@ class adhl_server extends webServiceServer
   private function records($params)
   {
     $methods=new methods();
-    $records=$methods->ADHLRequest($params,$this->verbose);
+    $records=$methods->ADHLRequest($params,$this->verbose,$this->watch);
 
     return $records;
   }
+
+  public function __destruct()
+  {
+    $this->watch->stop("openadhl");
+    verbose::log(TIMER, $this->watch->dump());
+  }
+  
 }
 
 // initialize server
@@ -98,7 +109,7 @@ class methods
 {
   /** \brief member holds sql */
   private $sql;
-
+  //public static $pure_sql;
   
   private $test;
 
@@ -106,26 +117,34 @@ class methods
    * @params $params; the request given from soapclient or derived from url-query
    * @return array with response in abm_xml format
   */
-  public function ADHLRequest($params,$verbose)
+  public function ADHLRequest($params,$verbose,$watch)
   {
-    
+    $watch->start("oracle");    
     $ids = $this->get_ids($params,$verbose);
-   
+    $watch->stop("oracle");
     if( !$ids ) // empty result-set
       return array();
 	
+    $watch->start("NEP");
     // get result as array
     if(! $dcarray=$this->set_search($ids,$params,$error) ) 
       {
 	$verbose->log(FATAL,"zsearch-error: ".$error);
 	header("HTTP/1.0 500 Internal server error");
       }
+    $watch->stop("NEP");
 
+    $watch->start("PARSE");
     if( is_array($search["records"]) )
       foreach( $search["records"] as $rec )
 	  $dcarray[]=$this->get_abm_dc($rec["record"]);
- 
-    return $this->sort_array($ids, $dcarray );    
+    $watch->stop("PARSE");
+
+    $watch->start("SORTER");
+    $ret=$this->sort_array($ids, $dcarray );    
+    $watch->stop("SORTER");
+    
+    return $ret;
   }
 
   /** \brief
@@ -184,6 +203,8 @@ class methods
 	return false;    
 
     $db->query($sql);
+
+    //self::$pure_sql=$db->pure_sql();
     
     if( $error=$db->get_error() )
 	$verbose->log(FATAL," OCI error: ".$error);
@@ -310,19 +331,19 @@ class methods
       }
     // filter by minimum age
       // if( $request->age->minAge )
-      if( $minAge=$params->age->_value->minAge )
+      if( $minAge=$params->age->_value->minAge->_value )
       {
 	// bind minAge-variable
 	$db->bind("minAge_bind",$minAge);
-	$where .= "and l2.foedt <= sysdate- :minAge_bind *365\n";
+	$where .= "and l2.foedt <= sysdate - (:minAge_bind *365)\n";
       }
     // filter by maximum age
       // if( $request->age->maxAge )
       if( $maxAge=$params->age->_value->maxAge->_value)
       {
 	// bind maxAge-variable
-	$db->bind("maxAge_bind",$request->age->maxAge);	
-	$where .= "and l2.foedt >= sysdate- :maxAge_bind *365\n";
+	$db->bind("maxAge_bind",$maxAge);	
+	$where .= "and l2.foedt >= sysdate - (:maxAge_bind *365)\n";
       }
     // filter by minimum date
     //if( $request->dateInterval->from )
@@ -349,7 +370,14 @@ class methods
 	$numRecords=5;
 
       $db->bind("bind_numRecords",$numRecords,SQLT_INT);
-    
+
+// also bind l1max and l2max
+$l1max=3;
+$db->bind("bind_l1max",$l1max,SQLT_INT);
+$l2max=2;
+$db->bind("bind_l2max",$l2max,SQLT_INT);
+
+  
     //set query    
       /*          $query =
 'select lid from
@@ -365,18 +393,30 @@ order by t.count desc
 )
 where rownum<=:bind_numRecords';*/
 
-      $query =
+/*     $query =
 'select lid from
 (select distinct l2.lokalid lid, l2.laan_i_klynge count
 from '.TABLE.' l1 inner join '.TABLE.' l2
 on l2.laanerid = l1.laanerid'
 .$where.
-'and l1.laan_i_klynge>3 and l2.laan_i_klynge>2 order by count desc
+'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max order by count desc
+)
+where rownum<=:bind_numRecords';*/
+
+ $query =
+'select lid from
+(
+select lid, count(*) count from
+(select l2.lokalid lid
+from '.TABLE.' l1 inner join '.TABLE.' l2
+on l2.laanerid = l1.laanerid'
+.$where.
+'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max
+)
+group by lid order by count desc
 )
 where rownum<=:bind_numRecords';
 
-// echo $query;
-//   exit;
     return $query;
   }
  
@@ -394,6 +434,8 @@ where rownum<=:bind_numRecords';
     $dom->LoadXML(utf8_encode($xml));
    
     $xpath = new DOMXPath($dom);
+
+    libxml_clear_errors();
        
     $record->_namespace="http://oss.dbc.dk/ns/adhl";
     // identifier ( lid, lok )
@@ -421,10 +463,15 @@ where rownum<=:bind_numRecords';
     if( $nodelist )
       foreach( $nodelist as $node )
 	{
+	  //echo $node->nodeValue."<br />\n";
 	  $creator->_value=xml_func::UTF8($node->nodeValue);
 	  $creator->_namespace="http://oss.dbc.dk/ns/adhl";
 	  $record->_value->creator[]=$creator;
+	  $creator=null;
 	}
+    //    print_r($record->_value->creator);
+    //exit;
+
     // title
     $query = "/dkabm:record/dc:title";
     $nodelist = $xpath->query($query);
@@ -434,6 +481,7 @@ where rownum<=:bind_numRecords';
 	  $title->_value=xml_func::UTF8($node->nodeValue);
 	  $title->_namespace="http://oss.dbc.dk/ns/adhl";
 	  $record->_value->title[]=$title;
+	  $title=null;
 	  
 	  // $record->title[] =  xml_func::UTF8($node->nodeValue);
 	}
@@ -446,6 +494,7 @@ where rownum<=:bind_numRecords';
 	  $description->_value=xml_func::UTF8($node->nodeValue);
 	  $description->_namespace="http://oss.dbc.dk/ns/adhl";
 	  $record->_value->description[]=$description;
+	  $description=null;
 
 	  //  $record->description[] =  xml_func::UTF8($node->nodeValue);
 	}
@@ -459,7 +508,7 @@ where rownum<=:bind_numRecords';
 	  $type->_value=xml_func::UTF8($node->nodeValue);
 	  $type->_namespace="http://oss.dbc.dk/ns/adhl";
 	  $record->_value->type[]=$type;
-	  
+	  $type=null;
 	  // $record->type[] =  xml_func::UTF8($node->nodeValue);    
 	}
     
@@ -506,6 +555,11 @@ class db
   {
     $this->oci->set_query($query);
   }
+
+  /*function pure_sql()
+  {
+    return $this->oci->pure_sql();
+  }*/
 
   /** return one row from db */
   function get_row()
