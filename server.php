@@ -85,7 +85,7 @@ class adhl_server extends webServiceServer
   private function records($params)
   {
     $methods=new methods();
-    $records=$methods->ADHLRequest($params,$this->verbose,$this->watch);
+    $records=$methods->ADHLRequest($params,$this->watch);
 
     return $records;
   }
@@ -117,10 +117,10 @@ class methods
    * @params $params; the request given from soapclient or derived from url-query
    * @return array with response in abm_xml format
   */
-  public function ADHLRequest($params,$verbose,$watch)
+  public function ADHLRequest($params,$watch)
   {
     $watch->start("oracle");    
-    $ids = $this->get_ids($params,$verbose);
+    $ids = $this->get_ids($params);
     $watch->stop("oracle");
     if( !$ids ) // empty result-set
       return array();
@@ -129,7 +129,7 @@ class methods
     // get result as array
     if(! $dcarray=$this->set_search($ids,$params,$error) ) 
       {
-	$verbose->log(FATAL,"zsearch-error: ".$error);
+	verbose::log(FATAL,"zsearch-error: ".$error);
 	header("HTTP/1.0 500 Internal server error");
       }
     $watch->stop("NEP");
@@ -195,7 +195,7 @@ class methods
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
    */
-  private function get_ids($params,$verbose)
+  private function get_ids($params)
   {   
     $db = new db();
     // pass db-object to set bind-variables
@@ -207,7 +207,7 @@ class methods
     //self::$pure_sql=$db->pure_sql();
     
     if( $error=$db->get_error() )
-	$verbose->log(FATAL," OCI error: ".$error);
+	verbose::log(FATAL," OCI error: ".$error);
 
     while( $row = $db->get_row() )
       {	
@@ -520,7 +520,7 @@ where rownum<=:bind_numRecords';
 	    $log_txt=" :get_abm_dc : ".trim($error->message);
 	    // $log_txt.="\n xml: \n".$xml;
 	    // TODO alternative way of logging
-	    // adhl_server::$verbose->log(WARNING,$log_txt);
+	    // adhl_server::verbose::log(WARNING,$log_txt);
 	    echo $log_txt;
 	    exit;
 	    libxml_clear_errors();
