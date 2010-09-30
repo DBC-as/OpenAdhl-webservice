@@ -275,6 +275,7 @@ group by lid order by count desc limit $2
 (select lokalid as lid, count(*) as count from laan 
 where laanerid in 
 (select laanerid from laan where lokalid=$1) 
+and lokalid != $1
 group by lid order by count desc limit $2) as foo";
 
  return $query;
