@@ -22,8 +22,11 @@
 /** include for handling xml*/
 require_once("OLS_class_lib/xml_func_class.php");
 
-/** include for database-access */
+/** include for oci database-access */
 require_once("OLS_class_lib/oci_class.php");
+
+/** include for postgres database-access */
+require_once("OLS_class_lib/pg_database_class.php");
 
 /** includes for zsearch */
 require_once("includes/search_func.phpi");
@@ -109,8 +112,6 @@ class methods
 {
   /** \brief member holds sql */
   private $sql;
-  //public static $pure_sql;
-  
   private $test;
 
   /** \brief The function handling the request
@@ -119,9 +120,13 @@ class methods
   */
   public function ADHLRequest($params,$watch)
   {
-    $watch->start("oracle");    
-    $ids = $this->get_ids($params);
-    $watch->stop("oracle");
+    // get a key to request for tracing
+    helpFunc::cache_key($params,$cachekey);
+    verbose::log(TRACE,"request-key::".$cachekey);
+
+    //$watch->start("oracle");    
+    $ids = $this->get_ids($params,$watch);
+    //$watch->stop("oracle");
     if( !$ids ) // empty result-set
       return array();
 	
@@ -195,30 +200,87 @@ class methods
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
    */
-  private function get_ids($params)
-  {   
-    $db = new db();
+  private function get_ids($params,$watch=null)
+  {  
+
+    /* OCI */
+    // $db = new db($watch);
+
+    // POSTGRES
+    $db = new pg_db($watch);
+
     // pass db-object to set bind-variables
-    if(! $sql=$this->get_sql($params,$db) )
+
+    /* OCI */
+     //if(! $sql=$this->get_sql($params,$db) )
+
+    /* POSTGRES */
+    if( ! $sql = $this->get_pg_sql($params,$db) )
 	return false;    
-
-    $db->query($sql);
-
-    //self::$pure_sql=$db->pure_sql();
+     
     
+    $db->query($sql);
+ 
     if( $error=$db->get_error() )
 	verbose::log(FATAL," OCI error: ".$error);
 
     while( $row = $db->get_row() )
       {	
-	$res['lid']=$row["LID"];
+	//	print_r($row);
+	$res['lid']=$row["lid"];
 	//$res['lok']=$row["LOK"];
 	$ids[]=$res;
       }
+    //exit;
 
      return $ids;
   }
+ 
   
+  private function get_pg_sql($params,$db)
+  {
+     if( $isbn=$params->id->_value->isbn->_value )
+      {	
+	if( $idarr = helpFunc::get_lid_and_lok($isbn) )
+	  {
+	    $params->id->_value->faust->_value=$idarr['lid'];	    
+	  }
+	else
+	  return false;
+      }
+
+     $db->bind("foo",$params->id->_value->faust->_value,SQLT_INT);
+
+     if( $numRecords=$params->numRecords->_value )
+       ;
+     else
+       $numRecords=5;
+     
+     $db->bind("foo",$numRecords,SQLT_INT);
+     
+     $where = "and l1.lokalid=$1";//.$params->id->_value->faust->_value."'";
+     //$where = "and l1.lokalid='".$params->id->_value->faust->_value."'";
+     /*     $query =
+"select lid from
+(
+select lid, count(lid) as count from
+(select l2.lokalid as lid
+from laan as l1 left join laan as l2
+on l2.laanerid = l1.laanerid ".$where.") as foo
+group by lid order by count desc limit $2
+) as bar";*/
+
+ $query =
+"select lid,count from 
+(select lokalid as lid, count(*) as count from laan 
+where laanerid in 
+(select laanerid from laan where lokalid=$1) 
+group by lid order by count desc limit $2) as foo";
+
+ return $query;
+  }
+    
+ 
   /**\brief  Function sorts result from Zsearch
    *   @param $records; an array holding the records retrieved from Zsearch
    *   @param $ids; an array of localids from databasesearch - holding the sortorder
@@ -532,6 +594,64 @@ where rownum<=:bind_numRecords';
 }
 
 
+class pg_db
+{
+ // member to hold instance of oci_class
+  const connectionstring = "host=sotara port=5432 dbname=yaaodb user=pjo password=pjo";
+  private $pg;
+  public $watch;
+  // constructor
+  function pg_db($watch)
+  {
+    $this->pg=new pg_database(self::connectionstring);
+    $this->pg->open();
+
+    if( $watch )
+      {
+	$this->watch = $watch;
+	$watch->start("POSTGRES");
+      }
+  }
+
+  function bind($name,$value,$type=SQLT_CHR)
+  {
+    $this->pg->bind($name, $value, -1, $type);
+  }
+
+  function query($query)
+  {
+    $this->pg->set_query($query);
+    $this->pg->execute();
+  }
+
+
+  /*function pure_sql()
+  {
+    return $this->oci->pure_sql();
+  }*/
+
+  /** return one row from db */
+  function get_row()
+  {
+    return $this->pg->get_row();
+  } 
+  
+  /** destructor; disconnect from database */
+  function __destruct()
+  {
+    if( $this->watch )
+      $this->watch->stop("POSTGRES");
+  }  
+
+  /** get error from oci-class */ 
+    function get_error()
+  {
+    //return $this->oci->get_error_string();
+    return false;
+    }
+  
+}
+
 /* \brief  wrapper for oci_class
  *  handles database transactions
 */
@@ -539,9 +659,16 @@ class db
 {
   // member to hold instance of oci_class
   private $oci;
+  private $watch;
   // constructor
-  function db()
+  function db($watch=null)
   {
+    if( $watch )
+      {
+	$this->watch = $watch;
+	$this->watch->start("ORACLE");
+      }
+
     $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);   
     $this->oci->connect();     
   }
@@ -572,6 +699,8 @@ class db
   {
     //  if( $this->oci )
       $this->oci->destructor();
+      if( $this->watch )
+	$this->watch->stop("ORACLE");
   }  
 
   /** get error from oci-class */ 
@@ -597,10 +726,9 @@ class helpFunc
 	elseif( is_scalar($var->_value) )
 	  {
 	    //echo $obj.":".$var->_value."\n";
-	    $cachekey.= $obj.":".$var->_value."\n";
+	    $cachekey.= $obj.":".$var->_value."_";
 	  }
       }
-    //   return $cachekey;
   }
   /** \brief  lookup localid and location from given isbn via Zsearch 
   *   @param $isbn; the isbn-number to look for
