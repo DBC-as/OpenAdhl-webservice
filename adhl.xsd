@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:types="http://oss.dbc.dk/ns/adhl" targetNamespace="http://oss.dbc.dk/ns/adhl" elementFormDefault="qualified">
 	<xs:annotation>
 		<xs:documentation xml:lang="eng">This file is part of OpenSearch.
@@ -30,6 +31,26 @@ You should have received a copy of the GNU Affero General Public License along w
 			</xs:sequence>
 		</xs:complexType>
 	</xs:element>
+
+	<xs:element name="topTenRequest">
+	  <xs:complexType>
+	    <xs:sequence>
+	      <xs:element ref="types:numRecords" minOccurs="0"/>
+	      <xs:element ref="types:outputType" minOccurs="0"/>
+	      <xs:element ref="types:callback" minOccurs="0"/>
+	    </xs:sequence>
+	  </xs:complexType>
+	</xs:element>
+
+	<xs:element name="topTenResponse">
+	  <xs:complexType>
+	    <xs:sequence>
+	      <xs:element ref="types:record" minOccurs="0" maxOccurs="unbounded"/>
+	      <xs:element ref="types:error" minOccurs="0"/>
+	    </xs:sequence>
+	  </xs:complexType>
+	</xs:element>
+
 	<xs:element name="age">
 		<xs:complexType>
 			<xs:sequence>
