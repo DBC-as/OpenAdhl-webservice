@@ -1,0 +1,33 @@
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope"
+xmlns:xml="http://www.w3.org/XML/1998/namespace"
+xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+xmlns:types="http://oss.dbc.dk/ns/adhl"
+xmlns:xs="http://www.w3.org/2001/XMLSchema">
+<SOAP-ENV:Body>
+<types:adhlRequest>
+  <types:id>
+    <types:localId>
+      <types:lok>?</types:lok>
+      <types:lid>?</types:lid>
+    </types:localId>
+    <types:isbn>?</types:isbn>
+    <types:faust>?</types:faust>
+  </types:id>
+  <types:numRecords>?</types:numRecords>
+  <types:sex>?</types:sex>
+  <types:age>
+    <types:minAge>?</types:minAge>
+    <types:maxAge>?</types:maxAge>
+  </types:age>
+  <types:dateInterval>
+    <types:from>?</types:from>
+    <types:to>?</types:to>
+  </types:dateInterval>
+  <types:outputType>?</types:outputType>
+  <types:callback>?</types:callback>
+</types:adhlRequest>
+</SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+
+
