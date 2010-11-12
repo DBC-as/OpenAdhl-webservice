@@ -32,6 +32,9 @@ require_once("OLS_class_lib/pg_database_class.php");
 require_once("includes/search_func.phpi");
 require_once("includes/targets.php");
 
+/** new include for z3950 class*/
+require_once("OLS_class_lib/z3950_class.php");
+
 /** include for webservice server */
 require_once("OLS_class_lib/webServiceServer_class.php");
 
@@ -39,7 +42,7 @@ require_once("OLS_class_lib/webServiceServer_class.php");
 require_once("OLS_class_lib/oci_class.php");
 
 /** include for caching */
-//require_once("OLS_class_lib/cache_client_class.php");
+require_once("OLS_class_lib/memcache_class.php");
 
 
 class adhl_server extends webServiceServer
@@ -71,6 +74,28 @@ class adhl_server extends webServiceServer
     return $response_xmlobj;
   }
 
+  public function topTenRequest($params)
+  {
+    //print_r($params);
+    //exit;
+
+    $records=$this->top_ten_records($params);
+
+    //   print_r($records);
+    //exit;
+    
+
+    // prepare response-object
+    $response_xmlobj->topTenResponse->_namespace="http://oss.dbc.dk/ns/adhl";
+
+//    $response_xmlobj->adhlResponse->_value->pure_sql->_value=methods::$pure_sql;
+    
+    foreach( $records as $record )
+      $response_xmlobj->topTenResponse->_value->record[]=$record;
+
+    return $response_xmlobj;
+  }
+
  
   /** \brief Echos config-settings
    *
@@ -89,6 +114,14 @@ class adhl_server extends webServiceServer
   {
     $methods=new methods();
     $records=$methods->ADHLRequest($params,$this->watch);
+
+    return $records;
+  }
+
+  private function top_ten_records($params)
+  {
+    $methods=new methods();
+    $records=$methods->topTenRequest($params,$this->watch);
 
     return $records;
   }
@@ -122,7 +155,7 @@ class methods
   {
     // get a key to request for tracing
     helpFunc::cache_key($params,$cachekey);
-    verbose::log(TRACE,"request-key::".$cachekey);
+    verbose::log(TRACE,"request-key::".$cachekey); 
 
     //$watch->start("oracle");    
     $ids = $this->get_ids($params,$watch);
@@ -130,6 +163,34 @@ class methods
     if( !$ids ) // empty result-set
       return array();
 	
+    return $this->execute_request($ids,$params,$watch);
+  }
+
+  public function topTenRequest($params,$watch)
+  {
+    $cachekey = "adhl_top_ten_request_";
+    helpFunc::cache_key($params,$cachekey);
+    verbose::log(TRACE,"request-key::".$cachekey);
+   
+    if( $ret =  cache::get($cachekey) )
+      {
+	verbose::log(TRACE,"cachehit: ".$cachekey);
+	return $ret;	
+      }
+    
+    $ids = $this->get_top_ten_ids($params,$watch);
+
+    if( !$ids ) // empty result-set
+      return array();
+	
+    $ret = $this->execute_request($ids,$params,$watch);   
+    cache::set($cachekey,$ret);
+
+    return $ret;
+  }
+
+  private function execute_request($ids,$params,$watch)
+  {
     $watch->start("NEP");
     // get result as array
     if(! $dcarray=$this->set_search($ids,$params,$error) ) 
@@ -151,11 +212,89 @@ class methods
     
     return $ret;
   }
+  
+  private function set_search($ids,$params,&$error)
+  {
+    if( !$step = $params->numRecords->_value )
+      $step = 5;
 
+    global $TARGET;
+    $target = $TARGET['danbib'];
+    /*$TARGET["danbib"] = array (
+    "host"		=> DANBIB_NEP,
+    "database"		=> 'danbibv3',
+    "piggyback"		=> false,
+    "raw_record"	=> true,
+    "authentication"	=> "webgr/dfa/hundepine",
+    "fors_name"		=> "bibliotek.dk",
+    "cclfields"		=> 'danbib.ccl2rpn',
+    "format"		=> 1,
+    "formats"		=> array("abm" => "xml/abm_xml"),
+    "start"		=> 1,
+    "step"		=> 1,
+    "filter"		=> "",
+    "sort"		=> "",
+    "sort_default"	=> "aar",
+    "sort_max"		=> 100000,
+    //"vis_max"		=> 1000000,
+    "timeout"		=> 30*/
+    
+    static $z3950;
+    if (empty($z3950)) $z3950 = new z3950();
+
+    $rpn=$this->get_rpn_from_ids($ids);    
+  
+    $z3950->set_target($target['host']);
+    $z3950->set_database($target['database']);
+    $z3950->set_syntax("xml");
+    $z3950->set_element("abm_xml");
+    $z3950->set_start(1);
+    $z3950->set_step($step);
+    // $z3950->set_rpn("@attr 6=1 @attr 4=103 @attr 3=3 @attr 2=3 @attr BIB1 1=12 22311212");
+    $z3950->set_rpn($rpn);
+    //$this->watch->start("z3950");
+    $hits = $z3950->z3950_search(5);
+    //$this->watch->stop("z3950");
+    if ($error = $z3950->get_error())
+      {
+	echo $error;
+	verbose::log(ERROR, "OpenAdhl:: " . $zurl . " Z3950 error: " . $z3950->get_error_string());
+      }
+
+    if (!$hits)
+      return "item_not_found";
+      
+    $dcarray=array();
+  
+    for( $i = 1; $i<=$hits; $i++ )
+      $dcarray[]=$this->get_abm_dc($z3950->z3950_record($i));
+
+
+    return $dcarray;
+  }
+  
+  private function get_rpn_from_ids($ids)
+  {
+    $pref ="@or ";
+    $count =  0;
+    foreach( $ids as $id )
+      {
+	$tmp .= "@attr 6=1 @attr 4=103 @attr 3=3 @attr 2=3 @attr BIB1 1=12 ".$id['lid']." ";
+	if( $count ++ > 0 )
+	  $or .= $pref;
+      }
+    if( count($ids) > 1 )
+      $rpn = $or.$tmp;
+    else
+      $rpn = $tmp;
+    
+    return $rpn;
+
+  }
   /** \brief
   
   */
-  private function set_search($ids,$params,&$error)
+  private function set_search_OLD($ids,$params,&$error)
   {
     global $TARGET;// from include file : targets.php
     global $search;  
@@ -178,9 +317,15 @@ class methods
     
     $search["ccl"]=$ccl;
 
+    
+
     // do the actual z3950 search to get results in searcharray
     Zsearch($search); 
+    print_r($search);   
     
+    echo $search['rpn'];
+    exit;
+ 
     if( $search["error"] )
       return false;
     
@@ -196,6 +341,49 @@ class methods
     return $dcarray;
   }
   
+
+  private function get_top_ten_ids($params,$watch=null)
+  {
+    // pt only supported for pgsql
+    $db = new pg_db($watch);
+
+    // pass db-object to set bind-variables
+   if( ! $sql = $this->get_top_ten_pg_sql($params,$db) )
+	return false;    
+     
+    $db->query($sql);
+ 
+    if( $error=$db->get_error() )
+	verbose::log(FATAL," db error: ".$error);
+
+    while( $row = $db->get_row() )
+      {	
+	$res['lid']=$row["lid"];
+	$ids[]=$res;
+      }
+    
+     
+
+     return $ids;
+  }
+
+  private function get_top_ten_pg_sql($params,$db)
+  {
+    if( $numRecords=$params->numRecords->_value )
+       ;
+     else
+       $numRecords=5;
+     
+     $db->bind("foo",$numRecords,SQLT_INT);
+     
+     $query = "select distinct lokalid as lid from laan where laan_i_klynge in(select distinct laan_i_klynge from laan order by laan_i_klynge desc limit $1)";
+         
+     // echo $query;
+     //exit;
+     
+     return $query;
+  }
+
   /** \brief Function gets result from database 
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
@@ -204,20 +392,21 @@ class methods
   {  
 
     /* OCI */
-    // $db = new db($watch);
+    //$db = new db($watch);
 
     // POSTGRES
-    $db = new pg_db($watch);
+        $db = new pg_db($watch);
 
     // pass db-object to set bind-variables
 
     /* OCI */
-     //if(! $sql=$this->get_sql($params,$db) )
+	
+	//if(! $sql=$this->get_sql($params,$db) )
 
     /* POSTGRES */
-    if( ! $sql = $this->get_pg_sql($params,$db) )
+	      if( ! $sql = $this->get_pg_sql($params,$db) )
 	return false;    
-     
+       
     
     $db->query($sql);
  
@@ -239,6 +428,11 @@ class methods
   
   private function get_pg_sql($params,$db)
   {
+
+    //$test = "select lid,count from (select lokalid as lid, count(*) as count from laan where laanerid in (select laanerid from laan where lokalid='27650341') and lokalid != '27650341' group by lid order by count desc limit 5) as foo";
+    //return $test;
+
+
      if( $isbn=$params->id->_value->isbn->_value )
       {	
 	if( $idarr = helpFunc::get_lid_and_lok($isbn) )
@@ -248,6 +442,7 @@ class methods
 	else
 	  return false;
       }
+     $faust = $params->id->_value->faust->_value;
 
      $db->bind("foo",$params->id->_value->faust->_value,SQLT_INT);
 
@@ -274,9 +469,10 @@ group by lid order by count desc limit $2
 "select lid,count from 
 (select lokalid as lid, count(*) as count from laan 
 where laanerid in 
-(select laanerid from laan where lokalid=$1) 
+(select laanerid from laan where lokalid=$1 order by laan_i_klynge desc limit 500 ) 
 and lokalid != $1
 group by lid order by count desc limit $2) as foo";
+
 
  return $query;
   }
@@ -288,7 +484,8 @@ group by lid order by count desc limit $2) as foo";
       
    */
   private function sort_array($ids, $records)
-  {
+  {    
+   
     $ret=array();
     foreach( $ids as $id )
       {
@@ -594,10 +791,12 @@ where rownum<=:bind_numRecords';
   }
 }
 
-
+/*
+brief \wrapper for pg_database_class
+ */
 class pg_db
 {
- // member to hold instance of oci_class
+ // member to hold instance of pg_database_class
   const connectionstring = "host=sotara port=5432 dbname=yaaodb user=pjo password=pjo";
   private $pg;
   public $watch;
@@ -605,8 +804,9 @@ class pg_db
   function pg_db($watch)
   {
     $this->pg=new pg_database(self::connectionstring);
-    $this->pg->open();
 
+    try{$this->pg->open();}
+    catch(Exception $e){verbose::log(ERROR,$e->__toString());}
     if( $watch )
       {
 	$this->watch = $watch;
@@ -621,8 +821,16 @@ class pg_db
 
   function query($query)
   {
-    $this->pg->set_query($query);
-    $this->pg->execute();
+try{$this->pg->set_query($query);}
+    catch(Exception $e){verbose::log(ERROR,$e->__toString());
+die($e->__toString());
+}
+
+try{$this->pg->execute();}
+catch(Exception $e){verbose::log(ERROR,$e->__toString());
+die($e->__toString());
+}
+  
   }
 
 
@@ -642,9 +850,11 @@ class pg_db
   {
     if( $this->watch )
       $this->watch->stop("POSTGRES");
+
+    $this->pg->close();
   }  
 
-  /** get error from oci-class */ 
+  /** get error from database-class */ 
     function get_error()
   {
     //return $this->oci->get_error_string();
