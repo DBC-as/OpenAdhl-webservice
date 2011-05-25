@@ -246,6 +246,8 @@ class methods
   
     $z3950->set_target($target['host']);
     $z3950->set_database($target['database']);
+    if ($target['authentication'])
+        $z3950->set_authentication($target['authentication']);
     $z3950->set_syntax("xml");
     $z3950->set_element("abm_xml");
     $z3950->set_start(1);
