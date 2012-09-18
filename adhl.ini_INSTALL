@@ -5,7 +5,8 @@
 wsdl = adhl.wsdl
 
 ; actions
-soapAction[ADHLRequest]=adhlRequest
+soapAction[ADHL]=adhlRequest
+soapAction[topTen]=topTenRequest
 
 ; logfile for verbose output
 logfile = /tmp/nypunkt_pjo/adhl.log
@@ -55,19 +56,22 @@ TABLE=laan
 
 [rest]
 ; valid parameters for rest-request
-action[ADHLRequest][id][]=faust
-action[ADHLRequest][id][]=isbn
-action[ADHLRequest][id][localId][]=lok
-action[ADHLRequest][id][localId][]=lid
-action[ADHLRequest][dateInterval][]=from
-action[ADHLRequest][dateInterval][]=to
-action[ADHLRequest][age][]=minAge
-action[ADHLRequest][age][]=maxAge	
-action[ADHLRequest][]=numRecords
-action[ADHLRequest][]=sex
+action[ADHL][id][]=faust
+action[ADHL][id][]=isbn
+action[ADHL][id][localId][]=lok
+action[ADHL][id][localId][]=lid
+action[ADHL][dateInterval][]=from
+action[ADHL][dateInterval][]=to
+action[ADHL][age][]=minAge
+action[ADHL][age][]=maxAge	
+action[ADHL][]=numRecords
+action[ADHL][]=sex
+action[ADHL][] = outputType
+action[ADHL][] = callback
 
-action[ALL][] = outputType
-action[ALL][] = callback
+action[topTen][] = numRecords
+action[topTen][] = outputType
+action[topTen][] = callback
 
 ;section for testing the service
 [HowRU]

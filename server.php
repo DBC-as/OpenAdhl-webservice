@@ -53,7 +53,7 @@ class adhl_server extends webServiceServer
     $this->watch->start("openadhl");
   }
   
-  public function ADHLRequest($params)
+  public function ADHL($params)
   {
     $defines=$this->config->get_section("database");
     define(VIP_US,$defines['VIP_US']);
@@ -74,7 +74,7 @@ class adhl_server extends webServiceServer
     return $response_xmlobj;
   }
 
-  public function topTenRequest($params)
+  public function topTen($params)
   {
     //print_r($params);
     //exit;
