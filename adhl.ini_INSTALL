@@ -4,9 +4,15 @@
 ; wsdl for service
 wsdl = adhl.wsdl
 
+;version
+version = 1.1
+
+;in_house domain
+in_house_domain=dbc.dk
+
 ; actions
-soapAction[ADHL]=adhlRequest
-soapAction[topTen]=topTenRequest
+soapAction[ADHLRequest]=adhlRequest
+soapAction[topTenRequest]=topTenRequest
 
 ; logfile for verbose output
 logfile = /tmp/nypunkt_pjo/adhl.log
@@ -21,10 +27,10 @@ logfile = /tmp/nypunkt_pjo/adhl.log
 ;   DEBUG   - debugging info     
 ;   Z3959   - calls to z3950 services
 ;   OCI     - oracle                 
-verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950+OCI
+verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950
 
 ;php file for classmap
-classes = ADHL_classes.php
+;classes = ADHL_classes.php
 
 ;baseurl for curl
 baseurl=http://vision.dbc.dk/~pjo/OpenLibrary/OpenAdhl/trunk/server.php
@@ -38,6 +44,10 @@ xmlns[xs] = http://www.w3.org/2001/XMLSchema
 ;path to xml-examples
 xmldir = ./xml
 
+[cache]
+host=localhost
+port=11211
+expire=3600
 
 ;settings for database access
 [database]
@@ -51,30 +61,40 @@ VIP_PW=
 VIP_DB=
 ;TABLE=temp
 TABLE=laan
+PG_TABLE=laan
 
 
 
 [rest]
 ; valid parameters for rest-request
-action[ADHL][id][]=faust
-action[ADHL][id][]=isbn
-action[ADHL][id][localId][]=lok
-action[ADHL][id][localId][]=lid
-action[ADHL][dateInterval][]=from
-action[ADHL][dateInterval][]=to
-action[ADHL][age][]=minAge
-action[ADHL][age][]=maxAge	
-action[ADHL][]=numRecords
-action[ADHL][]=sex
-action[ADHL][] = outputType
-action[ADHL][] = callback
+action[ADHLRequest][id][]=faust
+action[ADHLRequest][id][]=isbn
+action[ADHLRequest][id][localId][]=lok
+action[ADHLRequest][id][localId][]=lid
+action[ADHLRequest][dateInterval][]=from
+action[ADHLRequest][dateInterval][]=to
+action[ADHLRequest][age][]=minAge
+action[ADHLRequest][age][]=maxAge	
+action[ADHLRequest][]=numRecords
+action[ADHLRequest][]=sex
 
-action[topTen][] = numRecords
-action[topTen][] = outputType
-action[topTen][] = callback
+action[topTenRequest][id][localId][]=lok
+action[topTenRequest][id][localId][]=lid
+action[topTenRequest][id][]=faust
+action[topTenRequest][id][]=isbn
+action[topTenRequest][] = numRecords
+
+action[ALL][] = outputType
+action[ALL][] = callback
 
 ;section for testing the service
-[HowRU]
-isbn=87-986036-2-0
-outputType=XML
-numRecords=5
+[howru]
+test[]=ADHLRequest&isbn=978-87-7053-256-3
+preg_match[]=record
+error[]=ERROR getting isbn=978-87-7053-256-3
+
+;isbn=87-986036-2-0
+;outputType=XML
+;numRecords=5
+
+

@@ -28,6 +28,15 @@ You should have received a copy of the GNU Affero General Public License along w
     <wsdl:part name="output" element="types:adhlResponse"/>
   </wsdl:message>
 
+  <wsdl:message name="requestTopTen">
+    <wsdl:part name="input" element="types:topTenRequest" />
+  </wsdl:message>
+  
+  <wsdl:message name="responseTopTen">
+    <wsdl:part name="output" element="types:topTenResponse"/>
+  </wsdl:message>
+
+
   <wsdl:portType name="ADHLPortType">
     <wsdl:operation name="ADHLRequest">
       <wsdl:input message="RequestADHL" />
@@ -48,8 +57,32 @@ You should have received a copy of the GNU Affero General Public License along w
     </wsdl:operation>
   </wsdl:binding>
 
+  <wsdl:portType name="topTenPortType">
+    <wsdl:operation name="topTenRequest">
+      <wsdl:input message="requestTopTen" />
+      <wsdl:output message="responseTopTen"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="topTenBinding" type="topTenPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="topTenRequest">
+      <soap:operation soapAction="topTenRequest"/>
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+	<soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+
   <wsdl:service name="ADHL">
     <wsdl:port name="ADHLPort" binding="ADHLBinding">
+      <soap:address location="http://vision.dbc.dk/~pjo/OpenLibrary/OpenAdhl/trunk/server.php" />
+    </wsdl:port>
+    <wsdl:port name="topTenPort" binding="topTenBinding">
       <soap:address location="http://vision.dbc.dk/~pjo/OpenLibrary/OpenAdhl/trunk/server.php" />
     </wsdl:port>
   </wsdl:service>

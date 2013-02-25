@@ -45,93 +45,82 @@ require_once("OLS_class_lib/oci_class.php");
 require_once("OLS_class_lib/memcache_class.php");
 
 
-class adhl_server extends webServiceServer
-{  
-  public function __construct($inifile)
-  {
+class adhl_server extends webServiceServer {
+  public function __construct($inifile) {
     parent::__construct($inifile);
     $this->watch->start("openadhl");
   }
-  
-  public function ADHL($params)
-  {
+
+
+  public function ADHLRequest($params) {
     $defines=$this->config->get_section("database");
     define(VIP_US,$defines['VIP_US']);
     define(TABLE,$defines['TABLE']);
     define(VIP_PW,$defines['VIP_PW']);
     define(VIP_DB,$defines['VIP_DB']);
-  
+
     $records=$this->records($params);
 
     // prepare response-object
     $response_xmlobj->adhlResponse->_namespace="http://oss.dbc.dk/ns/adhl";
 
-//    $response_xmlobj->adhlResponse->_value->pure_sql->_value=methods::$pure_sql;
-    
     foreach( $records as $record )
       $response_xmlobj->adhlResponse->_value->record[]=$record;
 
     return $response_xmlobj;
   }
 
-  public function topTen($params)
-  {
-    //print_r($params);
-    //exit;
+
+  public function topTenRequest($params) {
+    $defines=$this->config->get_section("database");
+    if ( isset($defines['PG_TABLE']) )
+      define(PG_TABLE,$defines['PG_TABLE']);
 
     $records=$this->top_ten_records($params);
-
-    //   print_r($records);
-    //exit;
-    
 
     // prepare response-object
     $response_xmlobj->topTenResponse->_namespace="http://oss.dbc.dk/ns/adhl";
 
-//    $response_xmlobj->adhlResponse->_value->pure_sql->_value=methods::$pure_sql;
-    
     foreach( $records as $record )
       $response_xmlobj->topTenResponse->_value->record[]=$record;
 
     return $response_xmlobj;
   }
 
- 
+
   /** \brief Echos config-settings
    *
    */
-  public function show_info() 
-  {
+  public function show_info() {
     echo "<pre>";
     echo "version             " . $this->config->get_value("version", "setup") . "<br/>";
     echo "log                 " . $this->config->get_value("logfile", "setup") . "<br/>";
     echo "</pre>";
     die();
   }
-  
 
-  private function records($params)
-  {
+
+  private function records($params) {
     $methods=new methods();
     $records=$methods->ADHLRequest($params,$this->watch);
 
     return $records;
   }
 
-  private function top_ten_records($params)
-  {
+
+  private function top_ten_records($params) {
     $methods=new methods();
     $records=$methods->topTenRequest($params,$this->watch);
 
     return $records;
   }
 
-  public function __destruct()
-  {
+
+  public function __destruct() {
     $this->watch->stop("openadhl");
     verbose::log(TIMER, $this->watch->dump());
   }
-  
+
 }
 
 // initialize server
@@ -141,8 +130,7 @@ $server=new adhl_server("adhl.ini");
 $server->handle_request();
 
 /** \brief class for handling request*/
-class methods
-{
+class methods {
   /** \brief member holds sql */
   private $sql;
   private $test;
@@ -151,71 +139,75 @@ class methods
    * @params $params; the request given from soapclient or derived from url-query
    * @return array with response in abm_xml format
   */
-  public function ADHLRequest($params,$watch)
-  {
+  public function ADHLRequest($params,$watch) {
     // get a key to request for tracing
-    helpFunc::cache_key($params,$cachekey);
-    verbose::log(TRACE,"request-key::".$cachekey); 
-
-    //$watch->start("oracle");    
-    $ids = $this->get_ids($params,$watch);
-    //$watch->stop("oracle");
-    if( !$ids ) // empty result-set
-      return array();
-	
-    return $this->execute_request($ids,$params,$watch);
-  }
-
-  public function topTenRequest($params,$watch)
-  {
-    $cachekey = "adhl_top_ten_request_";
+    $cachekey = "ADHLRequest_";
     helpFunc::cache_key($params,$cachekey);
     verbose::log(TRACE,"request-key::".$cachekey);
-   
-    if( $ret =  cache::get($cachekey) )
-      {
-	verbose::log(TRACE,"cachehit: ".$cachekey);
-	return $ret;	
-      }
-    
-    $ids = $this->get_top_ten_ids($params,$watch);
 
-    if( !$ids ) // empty result-set
+    if ( $ret = cache::get($cachekey) ) {
+      verbose::log(TRACE,"cachehit: ".$cachekey);
+      return $ret;
+    }
+
+    //$watch->start("database");
+    $ids = $this->get_ids($params,$watch);
+    //$watch->stop("database");
+    if ( !$ids ) // empty result-set
       return array();
-	
-    $ret = $this->execute_request($ids,$params,$watch);   
+
+    $ret = $this->execute_request($ids,$params,$watch);
     cache::set($cachekey,$ret);
 
     return $ret;
   }
 
-  private function execute_request($ids,$params,$watch)
-  {
+
+  public function topTenRequest($params,$watch) {
+    $cachekey = "adhl_top_ten_request_";
+    helpFunc::cache_key($params,$cachekey);
+    verbose::log(TRACE,"request-key::".$cachekey);
+
+    if ( $ret = cache::get($cachekey) ) {
+      verbose::log(TRACE,"cachehit: ".$cachekey);
+      return $ret;
+    }
+
+    $ids = $this->get_top_ten_ids($params,$watch);
+
+    if ( !$ids ) // empty result-set
+      return array();
+
+    $ret = $this->execute_request($ids,$params,$watch);
+    cache::set($cachekey,$ret);
+
+    return $ret;
+  }
+
+  private function execute_request($ids,$params,$watch) {
     $watch->start("NEP");
     // get result as array
-    if(! $dcarray=$this->set_search($ids,$params,$error) ) 
-      {
-	verbose::log(FATAL,"zsearch-error: ".$error);
-	header("HTTP/1.0 500 Internal server error");
-      }
+    if (! $dcarray=$this->set_search($ids,$params,$error) ) {
+      verbose::log(FATAL,"zsearch-error: ".$error);
+      header("HTTP/1.0 500 Internal server error");
+    }
     $watch->stop("NEP");
 
     $watch->start("PARSE");
-    if( is_array($search["records"]) )
+    if ( is_array($search["records"]) )
       foreach( $search["records"] as $rec )
-	  $dcarray[]=$this->get_abm_dc($rec["record"]);
+	$dcarray[]=$this->get_abm_dc($rec["record"]);
     $watch->stop("PARSE");
 
     $watch->start("SORTER");
-    $ret=$this->sort_array($ids, $dcarray );    
+    $ret=$this->sort_array($ids, $dcarray );
     $watch->stop("SORTER");
-    
+
     return $ret;
   }
-  
-  private function set_search($ids,$params,&$error)
-  {
-    if( !$step = $params->numRecords->_value )
+
+  private function set_search($ids,$params,&$error) {
+    if ( !$step = $params->numRecords->_value )
       $step = 5;
 
     global $TARGET;
@@ -238,16 +230,16 @@ class methods
     "sort_max"		=> 100000,
     //"vis_max"		=> 1000000,
     "timeout"		=> 30*/
-    
+
     static $z3950;
     if (empty($z3950)) $z3950 = new z3950();
 
-    $rpn=$this->get_rpn_from_ids($ids);    
-  
+    $rpn=$this->get_rpn_from_ids($ids);
+
     $z3950->set_target($target['host']);
     $z3950->set_database($target['database']);
     if ($target['authentication'])
-        $z3950->set_authentication($target['authentication']);
+      $z3950->set_authentication($target['authentication']);
     $z3950->set_syntax("xml");
     $z3950->set_element("abm_xml");
     $z3950->set_start(1);
@@ -257,642 +249,584 @@ class methods
     //$this->watch->start("z3950");
     $hits = $z3950->z3950_search(5);
     //$this->watch->stop("z3950");
-    if ($error = $z3950->get_error())
-      {
-	echo $error;
-	verbose::log(ERROR, "OpenAdhl:: " . $zurl . " Z3950 error: " . $z3950->get_error_string());
-      }
+    if ($error = $z3950->get_error()) {
+      // echo $error;
+      verbose::log(ERROR, "OpenAdhl:: " . $zurl . " Z3950 error: " . $z3950->get_error_string());
+    }
 
     if (!$hits)
       return "item_not_found";
-      
+
     $dcarray=array();
-  
-    for( $i = 1; $i<=$hits; $i++ )
+
+    for ( $i = 1; $i<=$hits; $i++ )
       $dcarray[]=$this->get_abm_dc($z3950->z3950_record($i));
 
 
     return $dcarray;
   }
-  
-  private function get_rpn_from_ids($ids)
-  {
+
+  private function get_rpn_from_ids($ids) {
     $pref ="@or ";
     $count =  0;
-    foreach( $ids as $id )
-      {
-	$tmp .= "@attr 6=1 @attr 4=103 @attr 3=3 @attr 2=3 @attr BIB1 1=12 ".$id['lid']." ";
-	if( $count ++ > 0 )
-	  $or .= $pref;
-      }
-    if( count($ids) > 1 )
+    foreach( $ids as $id ) {
+      $tmp .= "@attr 6=1 @attr 4=103 @attr 3=3 @attr 2=3 @attr BIB1 1=12 ".$id['lid']." ";
+      if ( $count ++ > 0 )
+        $or .= $pref;
+    }
+    if ( count($ids) > 1 )
       $rpn = $or.$tmp;
     else
       $rpn = $tmp;
-    
+
     return $rpn;
 
   }
   /** \brief
-  
+
   */
-  private function set_search_OLD($ids,$params,&$error)
-  {
+  /*
+  private function set_search_OLD($ids,$params,&$error) {
     global $TARGET;// from include file : targets.php
-    global $search;  
-    
+    global $search;
+
     // TODO TARGET should be danbib
     //$search = &$TARGET["dfa"];
     $search = &$TARGET["danbib"];
     $search["format"] = "abm";
     $search["start"]=1;
-      
-    if( $bibcode=$params->id->_value->lok->_value )
+
+    if ( $bibcode=$params->id->_value->lok->_value )
       $search['bibkode']=$bibcode;
 
-    if( $step=$params->numRecords->_value )
+    if ( $step=$params->numRecords->_value )
       $search["step"]=$step;
     else
       $search["step"]=5;
-    
-    $ccl=$this->get_ccl_from_ids($ids); 
-    
+
+    $ccl=$this->get_ccl_from_ids($ids);
+
     $search["ccl"]=$ccl;
 
-    
+
 
     // do the actual z3950 search to get results in searcharray
-    Zsearch($search); 
-    print_r($search);   
-    
+    Zsearch($search);
+    print_r($search);
+
     echo $search['rpn'];
     exit;
- 
-    if( $search["error"] )
+
+    if ( $search["error"] )
       return false;
-    
+
 
     $dcarray=array();
-     if( is_array($search["records"]) )
+    if ( is_array($search["records"]) )
       foreach( $search["records"] as $rec )
-	  $dcarray[]=$this->get_abm_dc($rec["record"]);
+      $dcarray[]=$this->get_abm_dc($rec["record"]);
 
     //print_r($search);
     //exit;
 
     return $dcarray;
   }
-  
+  */
 
-  private function get_top_ten_ids($params,$watch=null)
-  {
+
+  private function get_top_ten_ids($params,$watch=null) {
     // pt only supported for pgsql
     $db = new pg_db($watch);
 
     // pass db-object to set bind-variables
-   if( ! $sql = $this->get_top_ten_pg_sql($params,$db) )
-	return false;    
-     
+    if ( ! $sql = $this->get_top_ten_pg_sql($params,$db) )
+      return false;
+
     $db->query($sql);
- 
-    if( $error=$db->get_error() )
-	verbose::log(FATAL," db error: ".$error);
 
-    while( $row = $db->get_row() )
-      {	
-	$res['lid']=$row["lid"];
-	$ids[]=$res;
-      }
-    
-     
+    if ( $error=$db->get_error() )
+      verbose::log(FATAL," db error: ".$error);
 
-     return $ids;
+    while ( $row = $db->get_row() ) {
+      $res['lid']=$row["lid"];
+      $ids[]=$res;
+    }
+
+    return $ids;
   }
 
-  private function get_top_ten_pg_sql($params,$db)
-  {
-    if( $numRecords=$params->numRecords->_value )
-       ;
-     else
-       $numRecords=5;
-     
-     $db->bind("foo",$numRecords,SQLT_INT);
-     
-     $query = "select distinct lokalid as lid from laan where laan_i_klynge in(select distinct laan_i_klynge from laan order by laan_i_klynge desc limit $1)";
-         
-     // echo $query;
-     //exit;
-     
-     return $query;
+  private function get_top_ten_pg_sql($params,$db) {
+    if ( $numRecords=$params->numRecords->_value ) //&& is_int($params->numRecords->_value) )
+      ;
+    else
+      $numRecords=5;
+
+    $db->bind("foo",$numRecords,SQLT_INT);
+
+    /* $query = "select distinct lokalid as lid from laan where laan_i_klynge in(select distinct laan_i_klynge from laan order by laan_i_klynge desc limit $1)";*/
+//$query = "select lokalid as lid, count(lokalid) as count from laan where laan_i_klynge in( select distinct laan_i_klynge from laan order by laan_i_klynge desc limit $1 ) group by lid order by count desc";
+    $query = 'select lokalid as lid, count(lokalid) as count from '.PG_TABLE.' where laan_i_klynge in( select distinct laan_i_klynge from '.PG_TABLE.' order by laan_i_klynge desc limit $1 ) group by lid order by count desc';
+
+    return $query;
   }
 
-  /** \brief Function gets result from database 
+  /** \brief Function gets result from database
    *   @param $request; the current adhlRequest
    *   @returns $ids; an array of localids
    */
-  private function get_ids($params,$watch=null)
-  {  
+  private function get_ids($params,$watch=null) {
 
-    /* OCI */
-    //$db = new db($watch);
-
-    // POSTGRES
-        $db = new pg_db($watch);
+    $db = new pg_db($watch);
 
     // pass db-object to set bind-variables
+    if ( ! $sql = $this->get_pg_sql($params,$db) )
+      return false;
 
-    /* OCI */
-	
-	//if(! $sql=$this->get_sql($params,$db) )
-
-    /* POSTGRES */
-	      if( ! $sql = $this->get_pg_sql($params,$db) )
-	return false;    
-       
-    
     $db->query($sql);
- 
-    if( $error=$db->get_error() )
-	verbose::log(FATAL," OCI error: ".$error);
 
-    while( $row = $db->get_row() )
-      {	
-	//	print_r($row);
-	$res['lid']=$row["lid"];
-	//$res['lok']=$row["LOK"];
-	$ids[]=$res;
-      }
-    //exit;
+    if ( $error=$db->get_error() )
+      verbose::log(FATAL," OCI error: ".$error);
 
-     return $ids;
+    while ( $row = $db->get_row() ) {
+      $res['lid']=$row["lid"];
+      $ids[]=$res;
+    }
+
+    return $ids;
   }
- 
-  
-  private function get_pg_sql($params,$db)
-  {
+
+
+  private function get_pg_sql($params,$db) {
 
     //$test = "select lid,count from (select lokalid as lid, count(*) as count from laan where laanerid in (select laanerid from laan where lokalid='27650341') and lokalid != '27650341' group by lid order by count desc limit 5) as foo";
     //return $test;
 
 
-     if( $isbn=$params->id->_value->isbn->_value )
-      {	
-	if( $idarr = helpFunc::get_lid_and_lok($isbn) )
-	  {
-	    $params->id->_value->faust->_value=$idarr['lid'];	    
-	  }
-	else
-	  return false;
+    if ( $isbn=$params->id->_value->isbn->_value ) {
+      if ( $idarr = helpFunc::get_lid_and_lok($isbn) ) {
+        $params->id->_value->faust->_value=$idarr['lid'];
       }
-     $faust = $params->id->_value->faust->_value;
+      else
+        return false;
+    }
+    $faust = $params->id->_value->faust->_value;
 
-     $db->bind("foo",$params->id->_value->faust->_value,SQLT_INT);
+    $db->bind("foo",$params->id->_value->faust->_value,SQLT_INT);
 
-     if( $numRecords=$params->numRecords->_value )
-       ;
-     else
-       $numRecords=5;
-     
-     $db->bind("foo",$numRecords,SQLT_INT);
-     
-     $where = "and l1.lokalid=$1";//.$params->id->_value->faust->_value."'";
-     //$where = "and l1.lokalid='".$params->id->_value->faust->_value."'";
-     /*     $query =
-"select lid from
-(
-select lid, count(lid) as count from
-(select l2.lokalid as lid
-from laan as l1 left join laan as l2
-on l2.laanerid = l1.laanerid ".$where.") as foo
-group by lid order by count desc limit $2
-) as bar";*/
+    if ( $numRecords=$params->numRecords->_value )
+      ;
+    else
+      $numRecords=5;
 
- $query =
-"select lid,count from 
-(select lokalid as lid, count(*) as count from laan 
-where laanerid in 
-(select laanerid from laan where lokalid=$1 order by laan_i_klynge desc limit 500 ) 
-and lokalid != $1
-group by lid order by count desc limit $2) as foo";
+    $db->bind("foo",$numRecords,SQLT_INT);
+
+    $where = "and l1.lokalid=$1";//.$params->id->_value->faust->_value."'";
+    //$where = "and l1.lokalid='".$params->id->_value->faust->_value."'";
+    /*     $query =
+    "select lid from
+    (
+    select lid, count(lid) as count from
+    (select l2.lokalid as lid
+    from laan as l1 left join laan as l2
+    on l2.laanerid = l1.laanerid ".$where.") as foo
+    group by lid order by count desc limit $2
+    ) as bar";*/
+
+    $query =
+      "select lid,count from
+      (select lokalid as lid, count(*) as count from laan
+      where laanerid in
+      (select laanerid from laan where lokalid=$1 order by laan_i_klynge desc limit 500 )
+      and lokalid != $1
+      group by lid order by count desc limit $2) as foo";
 
 
- return $query;
+    return $query;
   }
-    
- 
+
+
   /**\brief  Function sorts result from Zsearch
    *   @param $records; an array holding the records retrieved from Zsearch
    *   @param $ids; an array of localids from databasesearch - holding the sortorder
-      
-   */
-  private function sort_array($ids, $records)
-  {    
-   
-    $ret=array();
-    foreach( $ids as $id )
-      {
-	// if lok begins with '7';replace lok for 'folkebiblioteker' with lok for DBC(870970) and THEN do the sorting
-	if(  preg_match('/^7/', $id['lok']) || !isset($id['lok']) )
-	  $key=$id['lid'].'|'.'870970';
-	else
-	  $key = $id['lid'].'|'.$id['lok'];
 
-	foreach( $records as $record )
-	  if( $record->_value->recordId->_value == $key )
-	    {
-	      $ret[]=$record;
-	      break;
-	    }	     
-      }
-    return $ret;    
+   */
+  private function sort_array($ids, $records) {
+
+    $ret=array();
+    foreach( $ids as $id ) {
+      // if lok begins with '7';replace lok for 'folkebiblioteker' with lok for DBC(870970) and THEN do the sorting
+      if (  preg_match('/^7/', $id['lok']) || !isset($id['lok']) )
+        $key=$id['lid'].'|'.'870970';
+      else
+        $key = $id['lid'].'|'.$id['lok'];
+
+      // data-check
+      if ( is_array($records) )
+        foreach( $records as $record )
+        if ( $record->_value->recordId->_value == $key ) {
+          $ret[]=$record;
+          break;
+        }
+    }
+    return $ret;
   }
-  
+
 
   /** \brief
    *  Format a given array of ids to common command language (ccl)
    *  @param $ids; an array of localids and locations
    *  @return $ccl; ccl for zsearch
    */
-  private function get_ccl_from_ids($ids)
-  {
-    foreach( $ids as $id )
-      {
-	$ccl .= '(lid='.$id["lid"].')';
-	$ccl.=" or ";
-      }
+  private function get_ccl_from_ids($ids) {
+    foreach( $ids as $id ) {
+      $ccl .= '(lid='.$id["lid"].')';
+      $ccl.=" or ";
+    }
     // remove the last 'or' (and whitespace)
     $ccl = substr($ccl,0,-3);
-    
+
     return $ccl;
   }
-  
- 
+
+
   /** \brief
    *  Get sql from given request.
    *  @param $adhlRequest; current request
    *  @return $sql; sql formatted from given request
    */
-  private function get_sql( $params, db $db)
-  {
+  private function get_sql( $params, db $db) {
     // set clauses
-    $where = "\nand ";     
-   
+    $where = "\nand ";
+
     // if isbn is set - set localid and location via z-search
     // if( $request->id->isbn )
-    if( $isbn=$params->id->_value->isbn->_value )
-      {	
-	if( $idarr = helpFunc::get_lid_and_lok($isbn) )
-	  {
-	    $params->id->_value->faust->_value=$idarr['lid'];	    
-	  }
-	else
-	  return false;
+    if ( $isbn=$params->id->_value->isbn->_value ) {
+      if ( $idarr = helpFunc::get_lid_and_lok($isbn) ) {
+        $params->id->_value->faust->_value=$idarr['lid'];
       }
+      else
+        return false;
+    }
 
     // if( $request->id->localId->lid && $request->id->localId->lok)
-    if( $lid=$params->id->_value->lid->_value && $lok=$params->id->_value->lok->_value )
-      {
-	// bind variablese lok and lid
-	$db->bind("bind_lok",$lok,SQLT_INT);
-	$db->bind("bind_lid",$lid);
+    if ( $lid=$params->id->_value->lid->_value && $lok=$params->id->_value->lok->_value ) {
+      // bind variablese lok and lid
+      $db->bind("bind_lok",$lok,SQLT_INT);
+      $db->bind("bind_lid",$lid);
 
-     	$where .="l1.lokalid = :bind_lid";
-	$where .="\n";
-	$where .="and l1.laant_pa_bibliotek = :bind_lok";
-	$where .="\n";
-	// do NOT select same work
-	$where .="and l2.lokalid != :bind_lid";
-	$where .="\n";
-      } 
+      $where .="l1.lokalid = :bind_lid";
+      $where .="\n";
+      $where .="and l1.laant_pa_bibliotek = :bind_lok";
+      $where .="\n";
+      // do NOT select same work
+      $where .="and l2.lokalid != :bind_lid";
+      $where .="\n";
+    }
 
-      //elseif( $request->id->faust )
-      elseif( $faust=$params->id->_value->faust->_value )
-      {
-	// bind variable faust
-	$db->bind("faust_bind",$faust);
-	// this is the easy part. libraries always use faust-number as localid
+    //elseif( $request->id->faust )
+    elseif( $faust=$params->id->_value->faust->_value ) {
+      // bind variable faust
+      $db->bind("faust_bind",$faust);
+      // this is the easy part. libraries always use faust-number as localid
 
-	$where .= "l1.lokalid = :faust_bind";  
-	$where .= "\n";
-	// do NOT select same work
-	$where .= "and l2.lokalid != :faust_bind";
-	$where .="\n";
-      }
-    
-    else // id was not set or wrong; 
+      $where .= "l1.lokalid = :faust_bind";
+      $where .= "\n";
+      // do NOT select same work
+      $where .= "and l2.lokalid != :faust_bind";
+      $where .="\n";
+    }
+
+    else // id was not set or wrong;
       return false;
 
-    
-     // filter by sex
-      // if( $request->sex )
-      if( $sex=$params->sex->_value )
-      {
-	// bind sex-variable
-	$db->bind("sex_bind",$sex);
-	$where .= "and l2.koen= :sex_bind\n";
-      }
+
+    // filter by sex
+    // if( $request->sex )
+    if ( $sex=$params->sex->_value ) {
+      // bind sex-variable
+      $db->bind("sex_bind",$sex);
+      $where .= "and l2.koen= :sex_bind\n";
+    }
     // filter by minimum age
-      // if( $request->age->minAge )
-      if( $minAge=$params->age->_value->minAge->_value )
-      {
-	// bind minAge-variable
-	$db->bind("minAge_bind",$minAge);
-	$where .= "and l2.foedt <= sysdate - (:minAge_bind *365)\n";
-      }
+    // if( $request->age->minAge )
+    if ( $minAge=$params->age->_value->minAge->_value ) {
+      // bind minAge-variable
+      $db->bind("minAge_bind",$minAge);
+      $where .= "and l2.foedt <= sysdate - (:minAge_bind *365)\n";
+    }
     // filter by maximum age
-      // if( $request->age->maxAge )
-      if( $maxAge=$params->age->_value->maxAge->_value)
-      {
-	// bind maxAge-variable
-	$db->bind("maxAge_bind",$maxAge);	
-	$where .= "and l2.foedt >= sysdate - (:maxAge_bind *365)\n";
-      }
+    // if( $request->age->maxAge )
+    if ( $maxAge=$params->age->_value->maxAge->_value) {
+      // bind maxAge-variable
+      $db->bind("maxAge_bind",$maxAge);
+      $where .= "and l2.foedt >= sysdate - (:maxAge_bind *365)\n";
+    }
     // filter by minimum date
     //if( $request->dateInterval->from )
-      if( $from=$params->dateInterval->_value->from->_value )
-      {
-	// bind from-variable
-	$db->bind("bind_from",$from );
-	$where .= "and l2.dato > to_date(:bind_from,'YYYYMMDD')\n";
-      }
+    if ( $from=$params->dateInterval->_value->from->_value ) {
+      // bind from-variable
+      $db->bind("bind_from",$from );
+      $where .= "and l2.dato > to_date(:bind_from,'YYYYMMDD')\n";
+    }
     // filter by maximum date
-      // if( $request->dateInterval->to )
-      if( $to=$params->dateInterval->_value->to->_value)
-      {
-	//bind to-variable
-	$db->bind("bind_to",$to);
-	$where .= "and l2.dato < to_date(:bind_to,'YYYYMMDD')\n";    
-      }
+    // if( $request->dateInterval->to )
+    if ( $to=$params->dateInterval->_value->to->_value) {
+      //bind to-variable
+      $db->bind("bind_to",$to);
+      $where .= "and l2.dato < to_date(:bind_to,'YYYYMMDD')\n";
+    }
 
     // finally bind numRecords-variable
-      //  $db->bind("bind_numRecords",$request->numRecords,SQLT_INT);
-      if( $numRecords=$params->numRecords->_value )
-	;
-      else
-	$numRecords=5;
+    //  $db->bind("bind_numRecords",$request->numRecords,SQLT_INT);
+    if ( $numRecords=$params->numRecords->_value )
+      ;
+    else
+      $numRecords=5;
 
-      $db->bind("bind_numRecords",$numRecords,SQLT_INT);
+    $db->bind("bind_numRecords",$numRecords,SQLT_INT);
 
 // also bind l1max and l2max
-$l1max=3;
-$db->bind("bind_l1max",$l1max,SQLT_INT);
-$l2max=2;
-$db->bind("bind_l2max",$l2max,SQLT_INT);
+    $l1max=3;
+    $db->bind("bind_l1max",$l1max,SQLT_INT);
+    $l2max=2;
+    $db->bind("bind_l2max",$l2max,SQLT_INT);
 
-  
-    //set query    
-      /*          $query =
-'select lid from
-(select distinct l2.lokalid lid, t.count
-from '.TABLE.' l1 inner join '.TABLE.' l2
-on l2.laanerid = l1.laanerid'
-.$where.
-'inner join
-(select klynge, count(*) count from '.TABLE.' group by klynge ) t
-on l2.klynge = t.klynge
-and t.count > 3
-order by t.count desc
-)
-where rownum<=:bind_numRecords';*/
 
-/*     $query =
-'select lid from
-(select distinct l2.lokalid lid, l2.laan_i_klynge count
-from '.TABLE.' l1 inner join '.TABLE.' l2
-on l2.laanerid = l1.laanerid'
-.$where.
-'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max order by count desc
-)
-where rownum<=:bind_numRecords';*/
+    //set query
+    /*          $query =
+    'select lid from
+    (select distinct l2.lokalid lid, t.count
+    from '.TABLE.' l1 inner join '.TABLE.' l2
+    on l2.laanerid = l1.laanerid'
+    .$where.
+    'inner join
+    (select klynge, count(*) count from '.TABLE.' group by klynge ) t
+    on l2.klynge = t.klynge
+    and t.count > 3
+    order by t.count desc
+    )
+    where rownum<=:bind_numRecords';*/
 
- $query =
-'select lid from
-(
-select lid, count(*) count from
-(select l2.lokalid lid
-from '.TABLE.' l1 inner join '.TABLE.' l2
-on l2.laanerid = l1.laanerid'
-.$where.
-'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max
-)
-group by lid order by count desc
-)
-where rownum<=:bind_numRecords';
+    /*     $query =
+    'select lid from
+    (select distinct l2.lokalid lid, l2.laan_i_klynge count
+    from '.TABLE.' l1 inner join '.TABLE.' l2
+    on l2.laanerid = l1.laanerid'
+    .$where.
+    'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max order by count desc
+    )
+    where rownum<=:bind_numRecords';*/
+
+    $query =
+      'select lid from
+      (
+      select lid, count(*) count from
+      (select l2.lokalid lid
+      from '.TABLE.' l1 inner join '.TABLE.' l2
+      on l2.laanerid = l1.laanerid'
+      .$where.
+      'and l1.laan_i_klynge>:bind_l1max and l2.laan_i_klynge>:bind_l2max
+      )
+      group by lid order by count desc
+      )
+      where rownum<=:bind_numRecords';
 
     return $query;
   }
- 
+
   /** \brief
    *  parse xml (abm-format) and set dc
    *  @param $xml; the xml to parse
    *  @return $dc; dc element set from given xml
    */
-  private function get_abm_dc(&$xml)
-  {
-  
+  private function get_abm_dc(&$xml) {
+
     libxml_use_internal_errors(true);
 
     $dom = new DOMDocument('1.0', 'utf-8');
     $dom->LoadXML(utf8_encode($xml));
-   
+
     $xpath = new DOMXPath($dom);
 
     libxml_clear_errors();
-       
+
     $record->_namespace="http://oss.dbc.dk/ns/adhl";
     // identifier ( lid, lok )
     $query = "/dkabm:record/ac:identifier";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach($nodelist as $node)
-	{
-	  $record->_value->recordId->_value=xml_func::UTF8($node->nodeValue);
-	  $record->_value->recordId->_namespace="http://oss.dbc.dk/ns/adhl";
-	  //	$record->recordId =  xml_func::UTF8($node->nodeValue);
-	}	
+    if ( $nodelist ) {
+      foreach($nodelist as $node) {
+	$record->_value->recordId->_value=xml_func::UTF8($node->nodeValue);
+	$record->_value->recordId->_namespace="http://oss.dbc.dk/ns/adhl";
+	//	$record->recordId =  xml_func::UTF8($node->nodeValue);
+      }
+    }
     // url to bib.dk
     $query = "/dkabm:record/ac:location";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach( $nodelist as $node )
-	{
-	  $record->_value->url->_value=xml_func::UTF8($node->nodeValue);
-	  $record->_value->url->_namespace="http://oss.dbc.dk/ns/adhl";
-	}
+    if ( $nodelist ) {
+      foreach( $nodelist as $node ) {
+	$record->_value->url->_value=xml_func::UTF8($node->nodeValue);
+	$record->_value->url->_namespace="http://oss.dbc.dk/ns/adhl";
+      }
+    }
     // creator
     $query = "/dkabm:record/dc:creator";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach( $nodelist as $node )
-	{
-	  //echo $node->nodeValue."<br />\n";
-	  $creator->_value=xml_func::UTF8($node->nodeValue);
-	  $creator->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->creator[]=$creator;
-	  $creator=null;
-	}
-    //    print_r($record->_value->creator);
-    //exit;
-
+    if ( $nodelist ) {
+      foreach( $nodelist as $node ) {
+	//echo $node->nodeValue."<br />\n";
+	$creator->_value=xml_func::UTF8($node->nodeValue);
+	$creator->_namespace="http://oss.dbc.dk/ns/adhl";
+	$record->_value->creator[]=$creator;
+	$creator=null;
+      }
+    }
     // title
     $query = "/dkabm:record/dc:title";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach( $nodelist as $node )
-	{
-	  $title->_value=xml_func::UTF8($node->nodeValue);
-	  $title->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->title[]=$title;
-	  $title=null;
-	  
-	  // $record->title[] =  xml_func::UTF8($node->nodeValue);
-	}
+    if ( $nodelist ) {
+      foreach( $nodelist as $node ) {
+	$title->_value=xml_func::UTF8($node->nodeValue);
+	$title->_namespace="http://oss.dbc.dk/ns/adhl";
+	$record->_value->title[]=$title;
+	$title=null;
+      }
+    }
     // description
     $query = "/dkabm:record/dc:description";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach( $nodelist as $node )
-	{
-	  $description->_value=xml_func::UTF8($node->nodeValue);
-	  $description->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->description[]=$description;
-	  $description=null;
-
-	  //  $record->description[] =  xml_func::UTF8($node->nodeValue);
-	}
-    
+    if ( $nodelist ) {
+      foreach( $nodelist as $node ) {
+	$description->_value=xml_func::UTF8($node->nodeValue);
+	$description->_namespace="http://oss.dbc.dk/ns/adhl";
+	$record->_value->description[]=$description;
+	$description=null;
+      }
+    }
     // type
     $query = "/dkabm:record/dc:type";
     $nodelist = $xpath->query($query);
-    if( $nodelist )
-      foreach( $nodelist as $node )
-	{
-	  $type->_value=xml_func::UTF8($node->nodeValue);
-	  $type->_namespace="http://oss.dbc.dk/ns/adhl";
-	  $record->_value->type[]=$type;
-	  $type=null;
-	  // $record->type[] =  xml_func::UTF8($node->nodeValue);    
-	}
-    
-    $errors = libxml_get_errors();
-    if( $errors )
-      {
-	foreach( $errors as $error )
-	  {
-	    $log_txt=" :get_abm_dc : ".trim($error->message);
-	    // $log_txt.="\n xml: \n".$xml;
-	    // TODO alternative way of logging
-	    // adhl_server::verbose::log(WARNING,$log_txt);
-	    echo $log_txt;
-	    exit;
-	    libxml_clear_errors();
-	  }
-	return false;
+    if ( $nodelist ) {
+      foreach( $nodelist as $node ) {
+	$type->_value=xml_func::UTF8($node->nodeValue);
+	$type->_namespace="http://oss.dbc.dk/ns/adhl";
+	$record->_value->type[]=$type;
+	$type=null;
       }
-    return $record;         
+    }
+
+    $errors = libxml_get_errors();
+    if ( $errors ) {
+      foreach( $errors as $error ) {
+        $log_txt=" :get_abm_dc : ".trim($error->message);
+        // $log_txt.="\n xml: \n".$xml;
+        // TODO alternative way of logging
+        // adhl_server::verbose::log(WARNING,$log_txt);
+        // echo $log_txt;
+        verbose::log(TRACE, $log_txt);
+        // exit;
+        libxml_clear_errors();
+      }
+      verbose::log(TRACE, "return false");
+      return false;
+    }
+    return $record;
   }
 }
 
 /*
 brief \wrapper for pg_database_class
  */
-class pg_db
-{
- // member to hold instance of pg_database_class
-  const connectionstring = "host=sotara port=5432 dbname=yaaodb user=pjo password=pjo";
+class pg_db {
+// member to hold instance of pg_database_class
+  const connectionstring = "host=pgdriftro port=5432 dbname=yaaodb user=pjo password=pjo";
   private $pg;
   public $watch;
+
   // constructor
-  function pg_db($watch)
-  {
+  function pg_db($watch) {
     $this->pg=new pg_database(self::connectionstring);
 
-    try{$this->pg->open();}
-    catch(Exception $e){verbose::log(ERROR,$e->__toString());}
-    if( $watch )
-      {
-	$this->watch = $watch;
-	$watch->start("POSTGRES");
-      }
+    try {
+      $this->pg->open();
+    }
+    catch (Exception $e) {
+      verbose::log(ERROR,$e->__toString());
+    }
+    if ( $watch ) {
+      $this->watch = $watch;
+      $watch->start("POSTGRES");
+    }
   }
 
-  function bind($name,$value,$type=SQLT_CHR)
-  {
+  function bind($name,$value,$type=SQLT_CHR) {
     $this->pg->bind($name, $value, -1, $type);
   }
 
-  function query($query)
-  {
-try{$this->pg->set_query($query);}
-    catch(Exception $e){verbose::log(ERROR,$e->__toString());
-die($e->__toString());
-}
+  function query($query) {
+    try {
+      $this->pg->set_query($query);
+    }
+    catch (Exception $e) {
+      verbose::log(ERROR,$e->__toString());
+      die($e->__toString());
+    }
 
-try{$this->pg->execute();}
-catch(Exception $e){verbose::log(ERROR,$e->__toString());
-die($e->__toString());
-}
-  
+    try {
+      $this->pg->execute();
+    }
+    catch (Exception $e) {
+      verbose::log(ERROR,$e->__toString());
+      die($e->__toString());
+    }
+
   }
 
-
-  /*function pure_sql()
-  {
-    return $this->oci->pure_sql();
-  }*/
-
   /** return one row from db */
-  function get_row()
-  {
+  function get_row() {
     return $this->pg->get_row();
-  } 
-  
+  }
+
   /** destructor; disconnect from database */
-  function __destruct()
-  {
-    if( $this->watch )
+  function __destruct() {
+    if ( $this->watch )
       $this->watch->stop("POSTGRES");
 
     $this->pg->close();
-  }  
+  }
 
-  /** get error from database-class */ 
-    function get_error()
-  {
+  /** get error from database-class */
+  function get_error() {
     //return $this->oci->get_error_string();
     return false;
-    }
-  
+  }
+
 }
 
 /* \brief  wrapper for oci_class
  *  handles database transactions
 */
-class db
-{
+class db {
   // member to hold instance of oci_class
   private $oci;
   private $watch;
   // constructor
-  function db($watch=null)
-  {
-    if( $watch )
-      {
-	$this->watch = $watch;
-	$this->watch->start("ORACLE");
-      }
+  function db($watch=null) {
+    if ( $watch ) {
+      $this->watch = $watch;
+      $this->watch->start("ORACLE");
+    }
 
-    $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);   
-    $this->oci->connect();     
+    $this->oci = new oci(VIP_US,VIP_PW,VIP_DB);
+    $this->oci->connect();
   }
 
-  function bind($name,$value,$type=SQLT_CHR)
-  {
+  function bind($name,$value,$type=SQLT_CHR) {
     $this->oci->bind($name, $value, -1, $type);
   }
 
-  function query($query)
-  {
+  function query($query) {
     $this->oci->set_query($query);
   }
 
@@ -902,118 +836,103 @@ class db
   }*/
 
   /** return one row from db */
-  function get_row()
-  {
+  function get_row() {
     return $this->oci->fetch_into_assoc();
-  } 
-  
-  /** destructor; disconnect from database */
-  function __destruct()
-  {
-    //  if( $this->oci )
-      $this->oci->destructor();
-      if( $this->watch )
-	$this->watch->stop("ORACLE");
-  }  
+  }
 
-  /** get error from oci-class */ 
-  function get_error()
-  {
+  /** destructor; disconnect from database */
+  function __destruct() {
+    //  if( $this->oci )
+    $this->oci->destructor();
+    if ( $this->watch )
+      $this->watch->stop("ORACLE");
+  }
+
+  /** get error from oci-class */
+  function get_error() {
     return $this->oci->get_error_string();
   }
 }
 
 /** \brief
  *  Class holds static functions used for handling the request.
- *  only functions get_request and get_lid_and_lok is called from outside the class; 
+ *  only functions get_request and get_lid_and_lok is called from outside the class;
  *  other functions are private
 */
-class helpFunc
-{  
-  public static function cache_key($params,&$cachekey)
-  {
-    foreach( $params as $obj=>$var )
-      {
-	if( is_object($var->_value) )
-	  self::cache_key($var->_value,$cachekey);
-	elseif( is_scalar($var->_value) )
-	  {
-	    //echo $obj.":".$var->_value."\n";
-	    $cachekey.= $obj.":".$var->_value."_";
-	  }
+class helpFunc {
+  public static function cache_key($params,&$cachekey) {
+    foreach( $params as $obj=>$var ) {
+      if ( is_object($var->_value) )
+        self::cache_key($var->_value,$cachekey);
+      elseif( is_scalar($var->_value) ) {
+        //echo $obj.":".$var->_value."\n";
+        $cachekey.= $obj.":".$var->_value."_";
       }
+    }
   }
-  /** \brief  lookup localid and location from given isbn via Zsearch 
+  /** \brief  lookup localid and location from given isbn via Zsearch
   *   @param $isbn; the isbn-number to look for
   *   @returns $idarray; an array with ONE element (lid,lok)
   */
-  public static function get_lid_and_lok($isbn)
-  {
+  public static function get_lid_and_lok($isbn) {
     global $TARGET;// from include file : targets.php
-    global $search;  
-    
+    global $search;
+
     // TODO TARGET should be danbib
     // $search = &$TARGET["dfa"];
     $search = &$TARGET["danbib"];
     $search["format"] = "abm";
     $search["start"]=1;
- 
+
     $ccl='is ='.$isbn;
-    
+
     $search["ccl"]=$ccl;
-    
-    Zsearch($search); 
-    
+
+    Zsearch($search);
+
     // remember to unset rpn as $search is a global array and is used elsewhere
     unset($search['rpn']);
 
-    if( is_array($search["records"]) ) //  grab the first record if more are found   
-      {
-	if( !$idarray=self::get_identifier($search["records"][1]["record"]) )
-	  return false;
-	
-      }
-    else // no record found; return false; 
-      return false; 
-    
+    if ( is_array($search["records"]) ) { //  grab the first record if more are found
+      if ( !$idarray=self::get_identifier($search["records"][1]["record"]) )
+        return false;
+
+    }
+    else // no record found; return false;
+      return false;
+
     return $idarray;
   }
-  
+
   /** \brief  get ad:identifier from given xml(abm-format)
    *   @param $xml; the abm-record from Zsearch
-   *   @returns $idarray; an array with ONE element (lok,lid)     
+   *   @returns $idarray; an array with ONE element (lok,lid)
   */
-  private static function get_identifier(&$xml)
-  {
+  private static function get_identifier(&$xml) {
     // echo $xml;
     $dom = new DOMDocument('1.0', 'UTF-8');
     $dom->LoadXML(utf8_encode($xml));
     $xpath = new DOMXPath($dom);
     $query = "/dkabm:record/ac:identifier";
-    
-    //   echo $xml;
-    //exit;
 
     $nodelist = $xpath->query($query);
-    
-    if( $nodelist->length < 1 )
+
+    if ( $nodelist->length < 1 )
       return false;
-    
+
     $idarray = array();
     $parts=explode('|',$nodelist->item(0)->nodeValue);
-    
+
     // both lok and lid must be set
-    if( ! isset($parts[0]) || ! isset($parts[1]) )
+    if ( ! isset($parts[0]) || ! isset($parts[1]) )
       return false;
-    
+
     $idarray["lok"]=$parts[1];
     $idarray["lid"]=$parts[0];
-    
-    // print_r($idarray);
 
-    return $idarray;  
+    return $idarray;
   }
-  
+
 }
 
 
@@ -1022,11 +941,18 @@ class helpFunc
 // not properly setup or fails for some reason;
 
 // log errors
-function load_lang_tab()
-{
+function load_lang_tab() {
   // TODO do error-logging
 }
 
 
+//*
+//* Local variables:
+//* tab-width: 8
+//* c-basic-offset: 4
+//* End:
+//* vim600: sw=2 ts=8 fdm=marker
+//* vim<600: sw=2 ts=8
+//*/
 
 ?>
